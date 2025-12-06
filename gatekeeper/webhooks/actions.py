@@ -72,13 +72,17 @@ def _handle_approve(media_request, media_type, media_id, title, user):
     """Handle approval action"""
     success = False
 
-    # Re-enable monitoring
+    # Re-enable monitoring and trigger search
     if media_type == 'movie':
         radarr = RadarrClient()
         success = radarr.monitor(media_id)
+        if success:
+            radarr.search_movie(media_id)
     elif media_type == 'series':
         sonarr = SonarrClient()
         success = sonarr.monitor(media_id)
+        if success:
+            sonarr.search_series(media_id)
 
     # Update request status
     if media_request:
