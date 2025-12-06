@@ -121,6 +121,22 @@ def radarr_webhook():
             requested_by = f"Tag: {tags[0]}"
             media_request.requested_by_username = requested_by
 
+    # Fast path: Admin/adult users get auto-approved without AI analysis
+    if user and user.user_type in ('admin', 'adult'):
+        radarr = RadarrClient()
+        radarr.monitor(movie_id)
+        radarr.search_movie(movie_id)
+        media_request.status = Request.STATUS_AUTO_APPROVED
+        media_request.held_reason = f"{user.user_type.title()} user - auto-approved"
+        db.session.commit()
+        logger.info(f"Fast auto-approved for {user.user_type}: {title}")
+        return jsonify({
+            'status': 'auto_approve',
+            'request_id': media_request.id,
+            'reason': f'{user.user_type.title()} user - auto-approved',
+            'used_ai': False,
+        }), 200
+
     # Check if certification is already known from Radarr
     router = UserRouter()
     radarr = RadarrClient()
