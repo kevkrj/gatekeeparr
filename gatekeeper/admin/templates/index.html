@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gatekeeper Admin</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-icon">🛡️</span>
+            <span class="brand-text">Gatekeeper</span>
+        </div>
+        <div class="nav-links">
+            <a href="#" class="nav-link active" data-view="dashboard">Dashboard</a>
+            <a href="#" class="nav-link" data-view="requests">Requests</a>
+            <a href="#" class="nav-link" data-view="users">Users</a>
+            <a href="#" class="nav-link" data-view="approvals">Approvals</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Dashboard View -->
+        <div id="dashboard-view" class="view active">
+            <h1>Dashboard</h1>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-total">-</div>
+                    <div class="stat-label">Total Requests</div>
+                </div>
+                <div class="stat-card held">
+                    <div class="stat-value" id="stat-held">-</div>
+                    <div class="stat-label">Held for Review</div>
+                </div>
+                <div class="stat-card approved">
+                    <div class="stat-value" id="stat-approved">-</div>
+                    <div class="stat-label">Approved</div>
+                </div>
+                <div class="stat-card denied">
+                    <div class="stat-value" id="stat-denied">-</div>
+                    <div class="stat-label">Denied</div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h2>Held Requests</h2>
+                    <div id="held-requests-list" class="request-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Recent Activity</h2>
+                    <div id="recent-activity" class="activity-list">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Requests by Rating</h2>
+                <div id="rating-chart" class="chart-container">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Requests View -->
+        <div id="requests-view" class="view">
+            <h1>Requests</h1>
+
+            <div class="filters">
+                <select id="filter-status">
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="analyzing">Analyzing</option>
+                    <option value="held">Held</option>
+                    <option value="approved">Approved</option>
+                    <option value="denied">Denied</option>
+                    <option value="auto_approved">Auto-Approved</option>
+                    <option value="error">Error</option>
+                </select>
+                <select id="filter-media-type">
+                    <option value="">All Types</option>
+                    <option value="movie">Movies</option>
+                    <option value="series">Series</option>
+                </select>
+                <button id="btn-refresh-requests" class="btn">Refresh</button>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="requests-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Type</th>
+                            <th>Rating</th>
+                            <th>Requested By</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="7" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Users View -->
+        <div id="users-view" class="view">
+            <h1>Users</h1>
+
+            <div class="filters">
+                <button id="btn-sync-users" class="btn">Sync from Jellyseerr</button>
+                <button id="btn-refresh-users" class="btn">Refresh</button>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="users-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Type</th>
+                            <th>Max Rating</th>
+                            <th>Requests</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Approvals View -->
+        <div id="approvals-view" class="view">
+            <h1>Approval History</h1>
+
+            <div class="filters">
+                <select id="filter-action">
+                    <option value="">All Actions</option>
+                    <option value="approve">Approved</option>
+                    <option value="deny">Denied</option>
+                    <option value="auto_approve">Auto-Approved</option>
+                </select>
+                <button id="btn-refresh-approvals" class="btn">Refresh</button>
+            </div>
+
+            <div class="card">
+                <table class="data-table" id="approvals-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Action</th>
+                            <th>Decided By</th>
+                            <th>Source</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Request Detail Modal -->
+    <div id="request-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div id="modal-body">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Edit Modal -->
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h2>Edit User</h2>
+            <form id="user-edit-form">
+                <input type="hidden" id="edit-user-id">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="edit-username" disabled>
+                </div>
+                <div class="form-group">
+                    <label>User Type</label>
+                    <select id="edit-user-type">
+                        <option value="kid">Kid</option>
+                        <option value="teen">Teen</option>
+                        <option value="adult">Adult</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Max Rating</label>
+                    <select id="edit-max-rating">
+                        <option value="">No Limit</option>
+                        <option value="G">G</option>
+                        <option value="PG">PG</option>
+                        <option value="PG-13">PG-13</option>
+                        <option value="R">R</option>
+                        <option value="TV-Y">TV-Y</option>
+                        <option value="TV-Y7">TV-Y7</option>
+                        <option value="TV-G">TV-G</option>
+                        <option value="TV-PG">TV-PG</option>
+                        <option value="TV-14">TV-14</option>
+                        <option value="TV-MA">TV-MA</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit-requires-approval">
+                        Requires Approval (even for adults)
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" class="btn modal-close-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

@@ -115,25 +115,52 @@ def radarr_webhook():
             requested_by = f"Tag: {tags[0]}"
             media_request.requested_by_username = requested_by
 
-    # Analyze content
-    try:
-        analyzer = get_analyzer()
-        analysis = analyzer.analyze(title, overview, year)
-        logger.info(f"Analysis for {title}: {analysis.rating}")
-    except Exception as e:
-        logger.error(f"Analysis failed for {title}: {e}")
-        media_request.status = Request.STATUS_ERROR
-        media_request.held_reason = f"Analysis error: {str(e)}"
-        db.session.commit()
-        return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    # Route the request
+    # Check if certification is already known from Radarr
     router = UserRouter()
-    result = router.process_request(media_request, analysis)
+    radarr = RadarrClient()
+    certification = radarr.get_certification(movie_id)
+    used_ai = False
+
+    if certification:
+        # Use known certification for routing decision
+        logger.info(f"Using known certification for {title}: {certification}")
+        result = router.process_request_by_certification(media_request, certification)
+
+        # If held, get AI summary so parents know WHY content is rated this way
+        if result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
+            logger.info(f"Content held - fetching AI summary for {title}")
+            try:
+                analyzer = get_analyzer()
+                analysis = analyzer.analyze(title, overview, year)
+                # Update request with AI insights (keep metadata rating)
+                media_request.ai_summary = analysis.summary
+                media_request.ai_concerns = analysis.concerns
+                media_request.ai_provider = f"metadata+{analysis.provider}"
+                media_request.ai_model = analysis.model
+                media_request.analysis_duration_ms = analysis.duration_ms
+                db.session.commit()
+                used_ai = True
+                logger.info(f"AI summary for {title}: {analysis.summary[:100]}...")
+            except Exception as e:
+                logger.warning(f"AI summary failed for {title}, using metadata only: {e}")
+    else:
+        # No certification available - fall back to AI analysis
+        logger.info(f"No certification for {title}, using AI analysis")
+        try:
+            analyzer = get_analyzer()
+            analysis = analyzer.analyze(title, overview, year)
+            logger.info(f"AI Analysis for {title}: {analysis.rating}")
+            used_ai = True
+        except Exception as e:
+            logger.error(f"Analysis failed for {title}: {e}")
+            media_request.status = Request.STATUS_ERROR
+            media_request.held_reason = f"Analysis error: {str(e)}"
+            db.session.commit()
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        result = router.process_request(media_request, analysis)
 
     # Take action based on routing decision
-    radarr = RadarrClient()
-
     if result.decision == RoutingDecision.AUTO_APPROVE:
         # Ensure movie is monitored
         radarr.monitor(movie_id)
@@ -144,7 +171,7 @@ def radarr_webhook():
         radarr.unmonitor(movie_id)
         # Send notification
         notifier = get_notifier()
-        notifier.notify(media_request, analysis)
+        notifier.notify_held(media_request)
         logger.info(f"Held for approval: {title}")
 
     elif result.decision == RoutingDecision.BLOCK:
@@ -155,6 +182,8 @@ def radarr_webhook():
     return jsonify({
         'status': result.decision.value,
         'request_id': media_request.id,
-        'rating': analysis.rating,
+        'rating': media_request.ai_rating,
         'reason': result.reason,
+        'source': media_request.ai_provider,
+        'used_ai': used_ai,
     }), 200

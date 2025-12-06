@@ -351,6 +351,74 @@ class Notifier:
         db.session.commit()
         return notifications
 
+    def notify_held(
+        self,
+        request: Request,
+    ) -> list[Notification]:
+        """
+        Send notifications for a held request using stored request data.
+
+        This is used when routing by certification (no AnalysisResult object).
+
+        Args:
+            request: The held request (must have ai_rating and ai_summary set)
+
+        Returns:
+            List of Notification records
+        """
+        config = get_config()
+        callback_url = config.external_url.rstrip('/')
+
+        # Parse concerns from request if stored as JSON string
+        concerns = request.ai_concerns if request.ai_concerns else []
+        if isinstance(concerns, str):
+            try:
+                import json
+                concerns = json.loads(concerns)
+            except (json.JSONDecodeError, TypeError):
+                concerns = [concerns] if concerns else []
+
+        payload = NotificationPayload(
+            title=request.title,
+            rating=request.ai_rating,
+            summary=request.ai_summary or f"Rating: {request.ai_rating}",
+            concerns=concerns,
+            media_type=request.media_type,
+            media_id=request.media_id,
+            request_id=request.id,
+            requested_by=request.requested_by_username,
+            poster_url=request.poster_url,
+        )
+
+        notifications = []
+
+        for channel in self.channels:
+            notification = Notification(
+                request_id=request.id,
+                channel=channel.channel_name,
+                channel_url=getattr(channel, 'webhook_url', None),
+            )
+            notification.payload = payload.__dict__
+
+            try:
+                success = channel.send(payload, callback_url)
+                if success:
+                    notification.status = Notification.STATUS_SENT
+                    notification.sent_at = datetime.utcnow()
+                else:
+                    notification.status = Notification.STATUS_FAILED
+                    notification.error = "Send returned False"
+            except Exception as e:
+                notification.status = Notification.STATUS_FAILED
+                notification.error = str(e)
+                logger.error(f"Notification to {channel.channel_name} failed: {e}")
+
+            db.session.add(notification)
+            notifications.append(notification)
+
+        db.session.commit()
+        return notifications
+
     def add_channel(self, channel: NotificationChannel):
         """Add a notification channel"""
         self.channels.append(channel)

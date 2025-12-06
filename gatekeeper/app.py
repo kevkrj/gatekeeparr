@@ -7,7 +7,7 @@ Main application factory and entry point.
 import logging
 import os
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template, send_from_directory
 
 from gatekeeper.config import get_config, Config
 from gatekeeper.models import init_db
@@ -23,7 +23,14 @@ def create_app(config: Config = None) -> Flask:
     Returns:
         Configured Flask application
     """
-    app = Flask(__name__)
+    # Get the admin template/static directories
+    admin_dir = os.path.join(os.path.dirname(__file__), 'admin')
+
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(admin_dir, 'templates'),
+        static_folder=os.path.join(admin_dir, 'static')
+    )
 
     # Load configuration
     if config is None:
@@ -112,6 +119,13 @@ def create_app(config: Config = None) -> Flask:
             'connections': results
         }), 200 if all_ok else 207
 
+    # Admin panel route
+    @app.route('/admin')
+    @app.route('/admin/')
+    def admin_panel():
+        """Serve the admin panel"""
+        return render_template('index.html')
+
     return app
 
 
@@ -127,17 +141,16 @@ def _register_blueprints(app: Flask):
     app.register_blueprint(jellyseerr_bp)
     app.register_blueprint(actions_bp)
 
-    # API blueprints (will be added later)
-    # from gatekeeper.api.requests import requests_bp
-    # from gatekeeper.api.users import users_bp
-    # from gatekeeper.api.approvals import approvals_bp
-    # from gatekeeper.api.stats import stats_bp
-    # from gatekeeper.api.auth import auth_bp
-    # app.register_blueprint(requests_bp, url_prefix='/api')
-    # app.register_blueprint(users_bp, url_prefix='/api')
-    # app.register_blueprint(approvals_bp, url_prefix='/api')
-    # app.register_blueprint(stats_bp, url_prefix='/api')
-    # app.register_blueprint(auth_bp, url_prefix='/api')
+    # API blueprints
+    from gatekeeper.api.requests import requests_bp
+    from gatekeeper.api.users import users_bp
+    from gatekeeper.api.approvals import approvals_bp
+    from gatekeeper.api.stats import stats_bp
+
+    app.register_blueprint(requests_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(approvals_bp)
+    app.register_blueprint(stats_bp)
 
 
 def _register_error_handlers(app: Flask):

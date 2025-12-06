@@ -32,6 +32,7 @@ class SonarrSeries:
     size_on_disk: int
     tags: list[int]
     seasons: list[dict]
+    certification: Optional[str] = None
 
     @classmethod
     def from_api(cls, data: dict) -> "SonarrSeries":
@@ -48,6 +49,7 @@ class SonarrSeries:
             size_on_disk=data.get('statistics', {}).get('sizeOnDisk', 0),
             tags=data.get('tags', []),
             seasons=data.get('seasons', []),
+            certification=data.get('certification'),
         )
 
 
@@ -138,6 +140,22 @@ class SonarrClient:
             if data and len(data) > 0:
                 return SonarrSeries.from_api(data[0])
             return None
+        except requests.HTTPError:
+            return None
+
+    def get_certification(self, series_id: int) -> Optional[str]:
+        """
+        Get series certification/rating.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            Certification string (e.g., 'TV-MA', 'TV-PG') or None
+        """
+        try:
+            data = self._get(f"/series/{series_id}")
+            return data.get('certification')
         except requests.HTTPError:
             return None
 

@@ -51,6 +51,160 @@ Gatekeeper is an open-source content filtering and approval system for home medi
                                                      └─────────────────┘
 ```
 
+## Complete Pipeline Flow
+
+This section documents the end-to-end flow of a media request through the entire stack.
+
+### Infrastructure Overview
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           MEDIA REQUEST PIPELINE                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌──────────────┐  │
+│  │ Jellyseerr  │───▶│   Radarr/   │───▶│  Prowlarr   │───▶│ Transmission │  │
+│  │   :5055     │    │   Sonarr    │    │   :9696     │    │    :9091     │  │
+│  │             │    │ :7878/:8989 │    │  (Indexers) │    │  (VPN: PIA)  │  │
+│  └──────┬──────┘    └──────┬──────┘    └─────────────┘    └──────┬───────┘  │
+│         │                  │                                      │          │
+│         │ webhook          │ webhook                              │          │
+│         ▼                  ▼                                      │          │
+│  ┌─────────────────────────────────────┐                         │          │
+│  │           GATEKEEPER :5000          │                         │          │
+│  │      (AI Content Analysis)          │                         │          │
+│  │                                     │                         │          │
+│  │  • Analyzes content via Claude API  │                         │          │
+│  │  • Routes based on user type        │                         │          │
+│  │  • Sends Mattermost notifications   │                         │          │
+│  └──────────────┬──────────────────────┘                         │          │
+│                 │                                                 │          │
+│                 │ approve/deny                                    │          │
+│                 ▼                                                 ▼          │
+│  ┌─────────────────────────────┐              ┌─────────────────────────┐   │
+│  │       Mattermost :8065      │              │     Jellyfin :8096      │   │
+│  │  (Approve/Deny Buttons)     │              │    (Media Playback)     │   │
+│  │                             │              │                         │   │
+│  │  Parent receives alert ────────────────────▶ Content available      │   │
+│  │  clicks Approve/Deny        │              │                         │   │
+│  └─────────────────────────────┘              └─────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Step-by-Step Flow
+
+#### 1. User Makes Request (Jellyseerr)
+```
+User visits Jellyseerr (e.g., requests.example.com)
+  └─▶ Browses/searches for movie or TV show
+  └─▶ Clicks "Request"
+  └─▶ Jellyseerr sends webhook to Gatekeeper
+  └─▶ Jellyseerr forwards request to Radarr/Sonarr
+```
+
+#### 2. Content Analysis (Gatekeeper)
+```
+Gatekeeper receives Jellyseerr webhook
+  └─▶ Identifies requesting user
+  └─▶ Looks up user type (admin/adult/teen/kid)
+  └─▶ Fetches content metadata from TMDB
+  └─▶ Sends to AI for parental content analysis
+  └─▶ AI returns: rating, concerns, recommendation
+```
+
+#### 3. Routing Decision (Gatekeeper)
+```
+Based on user type + content rating:
+
+ADMIN or ADULT user:
+  └─▶ Auto-approve → Radarr/Sonarr monitors & downloads
+
+KID user + G/PG content:
+  └─▶ Auto-approve → Radarr/Sonarr monitors & downloads
+
+KID user + PG-13+ content:
+  └─▶ HOLD → Disable monitoring in Radarr/Sonarr
+  └─▶ Send Mattermost alert with Approve/Deny buttons
+
+ANY user + NC-17/X content:
+  └─▶ AUTO-BLOCK → Delete from Radarr/Sonarr
+  └─▶ Notify user request was denied
+```
+
+#### 4. Download & Availability
+```
+If approved/auto-approved:
+  └─▶ Radarr/Sonarr searches via Prowlarr
+  └─▶ Prowlarr queries indexers (TPB, YTS, etc.)
+  └─▶ Best match sent to Transmission (VPN-protected)
+  └─▶ Download completes
+  └─▶ Radarr/Sonarr imports to media library
+  └─▶ Jellyfin scans and makes available
+```
+
+#### 5. Parent Approval Flow (Mattermost)
+```
+When content is held for review:
+  └─▶ Parent receives Mattermost notification:
+      ┌─────────────────────────────────────────────┐
+      │ 🎬 Content Request Held                     │
+      │                                             │
+      │ Movie: Deadpool & Wolverine (2024)          │
+      │ Rating: R                                   │
+      │ Requested by: tommy                         │
+      │                                             │
+      │ AI Analysis:                                │
+      │ • Strong violence and gore                  │
+      │ • Pervasive language                        │
+      │ • Adult humor throughout                    │
+      │                                             │
+      │ [  Approve  ]  [  Deny  ]                   │
+      └─────────────────────────────────────────────┘
+
+  └─▶ Parent clicks Approve:
+      └─▶ Gatekeeper enables monitoring in Radarr/Sonarr
+      └─▶ Download begins
+      └─▶ Mattermost updated: "Approved by @dad"
+
+  └─▶ Parent clicks Deny:
+      └─▶ Gatekeeper deletes from Radarr/Sonarr
+      └─▶ Any partial downloads removed
+      └─▶ Mattermost updated: "Denied by @mom"
+```
+
+### Quality Controls (Radarr/Sonarr/Prowlarr)
+
+The pipeline includes automatic quality controls configured outside Gatekeeper:
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| Minimum Seeders | 5 | Only grab well-seeded torrents |
+| Max Size (1080p WEB) | ~8 GB/hr | ~16GB max for 2hr movie |
+| Max Size (1080p Bluray) | ~12 GB/hr | ~24GB max for 2hr movie |
+| Remux/4K | Disabled | Prevents 30-80GB downloads |
+
+### Content Pre-Filtering (Jellyseerr)
+
+Jellyseerr blacklist tags prevent inappropriate content from appearing in browse/discover:
+
+**Recommended Blacklisted Tags:** `erotic`, `sexploitation`, `porn`, `pornographic`, `softcore`, `hardcore`, `adult film`, `sex`
+
+> **Note:** Search results are not filtered (TMDB API limitation). Gatekeeper catches any inappropriate requests.
+
+### Services & Ports
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| Jellyseerr | 5055 | Media request UI |
+| Gatekeeper | 5000 | Content analysis & routing |
+| Radarr | 7878 | Movie management |
+| Sonarr | 8989 | TV show management |
+| Prowlarr | 9696 | Indexer aggregation |
+| Transmission | 9091 | Torrent downloads (VPN) |
+| Jellyfin | 8096 | Media playback |
+| Mattermost | 8065 | Notifications & approvals |
+
 ## Quick Start
 
 ### 1. Clone and Configure

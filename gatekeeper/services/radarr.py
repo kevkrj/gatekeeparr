@@ -32,6 +32,7 @@ class RadarrMovie:
     path: str
     size_on_disk: int
     tags: list[int]
+    certification: Optional[str] = None
 
     @classmethod
     def from_api(cls, data: dict) -> "RadarrMovie":
@@ -48,6 +49,7 @@ class RadarrMovie:
             path=data.get('path', ''),
             size_on_disk=data.get('sizeOnDisk', 0),
             tags=data.get('tags', []),
+            certification=data.get('certification'),
         )
 
 
@@ -138,6 +140,22 @@ class RadarrClient:
             if data and len(data) > 0:
                 return RadarrMovie.from_api(data[0])
             return None
+        except requests.HTTPError:
+            return None
+
+    def get_certification(self, movie_id: int) -> Optional[str]:
+        """
+        Get movie certification/rating.
+
+        Args:
+            movie_id: Radarr movie ID
+
+        Returns:
+            Certification string (e.g., 'PG', 'R') or None
+        """
+        try:
+            data = self._get(f"/movie/{movie_id}")
+            return data.get('certification')
         except requests.HTTPError:
             return None
 
