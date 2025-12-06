@@ -96,6 +96,17 @@ class RadarrClient:
             logger.error(f"Radarr API error: {e}")
             raise
 
+    def _post(self, endpoint: str, data: dict = None) -> dict:
+        """Make POST request to Radarr API"""
+        url = f"{self.base_url}/api/v3{endpoint}"
+        try:
+            response = self.session.post(url, json=data or {}, timeout=30)
+            response.raise_for_status()
+            return response.json() if response.text else {}
+        except requests.RequestException as e:
+            logger.error(f"Radarr API error: {e}")
+            raise
+
     def _delete(self, endpoint: str, params: dict = None) -> bool:
         """Make DELETE request to Radarr API"""
         url = f"{self.base_url}/api/v3{endpoint}"
@@ -187,6 +198,27 @@ class RadarrClient:
     def unmonitor(self, movie_id: int) -> bool:
         """Disable monitoring for a movie"""
         return self.set_monitored(movie_id, False)
+
+    def search_movie(self, movie_id: int) -> bool:
+        """
+        Trigger a search for a movie.
+
+        Args:
+            movie_id: Radarr movie ID
+
+        Returns:
+            True if search was triggered successfully
+        """
+        try:
+            self._post("/command", {
+                "name": "MoviesSearch",
+                "movieIds": [movie_id]
+            })
+            logger.info(f"Triggered search for movie {movie_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to trigger search for movie {movie_id}: {e}")
+            return False
 
     def delete_movie(self, movie_id: int, delete_files: bool = True, add_exclusion: bool = False) -> bool:
         """

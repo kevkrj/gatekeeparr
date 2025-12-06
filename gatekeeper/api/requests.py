@@ -100,15 +100,17 @@ def approve_request(request_id):
     notes = data.get('notes', '')
     decided_by = data.get('decided_by', 'admin_panel')
 
-    # Enable monitoring in *arr
+    # Enable monitoring and trigger search in *arr
     config = get_config()
     try:
         if req.media_type == 'movie' and req.media_id:
             client = RadarrClient(config.radarr.url, config.radarr.api_key)
             client.monitor(req.media_id)
+            client.search_movie(req.media_id)
         elif req.media_type == 'series' and req.media_id:
             client = SonarrClient(config.sonarr.url, config.sonarr.api_key)
             client.monitor(req.media_id)
+            client.search_series(req.media_id)
     except Exception as e:
         return jsonify({'error': f'Failed to enable monitoring: {str(e)}'}), 500
 

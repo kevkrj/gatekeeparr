@@ -138,9 +138,10 @@ def sonarr_webhook():
 
     # Take action based on routing decision
     if result.decision == RoutingDecision.AUTO_APPROVE:
-        # Ensure series is monitored
+        # Ensure series is monitored and trigger search
         sonarr.monitor(series_id)
-        logger.info(f"Auto-approved: {title}")
+        sonarr.search_series(series_id)
+        logger.info(f"Auto-approved and searching: {title}")
 
     elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
         # Unmonitor to pause downloads

@@ -96,6 +96,17 @@ class SonarrClient:
             logger.error(f"Sonarr API error: {e}")
             raise
 
+    def _post(self, endpoint: str, data: dict = None) -> dict:
+        """Make POST request to Sonarr API"""
+        url = f"{self.base_url}/api/v3{endpoint}"
+        try:
+            response = self.session.post(url, json=data or {}, timeout=30)
+            response.raise_for_status()
+            return response.json() if response.text else {}
+        except requests.RequestException as e:
+            logger.error(f"Sonarr API error: {e}")
+            raise
+
     def _delete(self, endpoint: str, params: dict = None) -> bool:
         """Make DELETE request to Sonarr API"""
         url = f"{self.base_url}/api/v3{endpoint}"
@@ -187,6 +198,27 @@ class SonarrClient:
     def unmonitor(self, series_id: int) -> bool:
         """Disable monitoring for a series"""
         return self.set_monitored(series_id, False)
+
+    def search_series(self, series_id: int) -> bool:
+        """
+        Trigger a search for a series.
+
+        Args:
+            series_id: Sonarr series ID
+
+        Returns:
+            True if search was triggered successfully
+        """
+        try:
+            self._post("/command", {
+                "name": "SeriesSearch",
+                "seriesId": series_id
+            })
+            logger.info(f"Triggered search for series {series_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to trigger search for series {series_id}: {e}")
+            return False
 
     def delete_series(self, series_id: int, delete_files: bool = True, add_exclusion: bool = False) -> bool:
         """

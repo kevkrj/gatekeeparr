@@ -162,9 +162,10 @@ def radarr_webhook():
 
     # Take action based on routing decision
     if result.decision == RoutingDecision.AUTO_APPROVE:
-        # Ensure movie is monitored
+        # Ensure movie is monitored and trigger search
         radarr.monitor(movie_id)
-        logger.info(f"Auto-approved: {title}")
+        radarr.search_movie(movie_id)
+        logger.info(f"Auto-approved and searching: {title}")
 
     elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
         # Unmonitor to pause downloads
