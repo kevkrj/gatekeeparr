@@ -101,9 +101,33 @@ def _handle_approve(media_request, media_type, media_id, title, user):
 
     if success:
         logger.info(f"Approved {title} by {user}")
+        # Get original request details to preserve in updated message
+        summary = media_request.ai_summary if media_request else ''
+        concerns = media_request.ai_concerns if media_request else []
+        rating = media_request.ai_rating if media_request else ''
+        requester = media_request.requested_by_username if media_request else ''
+
+        if isinstance(concerns, str):
+            try:
+                import json
+                concerns = json.loads(concerns)
+            except:
+                concerns = [concerns] if concerns else []
+
+        concerns_text = "\n".join([f"• {c}" for c in concerns]) if concerns else ""
+        requester_text = f"\n**Requested by:** {requester}" if requester else ""
+
+        # Update original message - add approved banner, keep details, remove buttons
         return jsonify({
-            'update': {'message': f'✅ **{title}** approved by {user}'},
-            'ephemeral_text': f'You approved {title}'
+            'update': {
+                'props': {
+                    'attachments': [{
+                        'color': '#00CC00',  # Green
+                        'title': f'✅ APPROVED - {title} ({rating})',
+                        'text': f'**Approved by {user}**\n\n_{summary}_{requester_text}\n\n**Parental Concerns:**\n{concerns_text}' if concerns_text else f'**Approved by {user}**\n\n_{summary}_{requester_text}',
+                    }]
+                }
+            }
         })
     else:
         return jsonify({'ephemeral_text': f'Error approving {title}'})
@@ -138,9 +162,33 @@ def _handle_deny(media_request, media_type, media_id, title, user):
 
     if success:
         logger.info(f"Denied {title} by {user}")
+        # Get original request details to preserve in updated message
+        summary = media_request.ai_summary if media_request else ''
+        concerns = media_request.ai_concerns if media_request else []
+        rating = media_request.ai_rating if media_request else ''
+        requester = media_request.requested_by_username if media_request else ''
+
+        if isinstance(concerns, str):
+            try:
+                import json
+                concerns = json.loads(concerns)
+            except:
+                concerns = [concerns] if concerns else []
+
+        concerns_text = "\n".join([f"• {c}" for c in concerns]) if concerns else ""
+        requester_text = f"\n**Requested by:** {requester}" if requester else ""
+
+        # Update original message - add denied banner, keep details, remove buttons
         return jsonify({
-            'update': {'message': f'❌ **{title}** denied and deleted by {user}'},
-            'ephemeral_text': f'You denied {title}'
+            'update': {
+                'props': {
+                    'attachments': [{
+                        'color': '#FF0000',  # Red
+                        'title': f'❌ DENIED - {title} ({rating})',
+                        'text': f'**Denied by {user}** - removed from library\n\n_{summary}_{requester_text}\n\n**Parental Concerns:**\n{concerns_text}' if concerns_text else f'**Denied by {user}** - removed from library\n\n_{summary}_{requester_text}',
+                    }]
+                }
+            }
         })
     else:
         return jsonify({'ephemeral_text': f'Error deleting {title}'})
