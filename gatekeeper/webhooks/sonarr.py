@@ -88,11 +88,24 @@ def sonarr_webhook():
     user = None
     requested_by = None
 
-    # First check if Jellyseerr already sent us this request (by TVDB ID)
-    jellyseerr_request = Request.query.filter_by(
-        tmdb_id=str(tvdb_id) if tvdb_id else None,
-        media_type='series'
-    ).filter(Request.requested_by_username.isnot(None)).first()
+    # First check if Jellyseerr already sent us this request
+    # Try multiple matching strategies since Jellyseerr uses TMDB IDs and Sonarr uses TVDB IDs
+    jellyseerr_request = None
+
+    # Strategy 1: Match by title (most reliable for TV shows)
+    if title:
+        jellyseerr_request = Request.query.filter(
+            Request.media_type == 'series',
+            Request.title.ilike(f"%{title}%"),
+            Request.requested_by_username.isnot(None)
+        ).order_by(Request.created_at.desc()).first()
+
+    # Strategy 2: Try TVDB ID stored in tmdb_id field (in case Jellyseerr sent TVDB)
+    if not jellyseerr_request and tvdb_id:
+        jellyseerr_request = Request.query.filter_by(
+            tmdb_id=str(tvdb_id),
+            media_type='series'
+        ).filter(Request.requested_by_username.isnot(None)).first()
 
     if jellyseerr_request and jellyseerr_request.id != media_request.id:
         # Copy user info from the Jellyseerr-tracked request
