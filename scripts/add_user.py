@@ -3,12 +3,12 @@
 Add User Script for Gatekeeper
 
 Usage (from host):
-    docker exec gatekeeper python /app/scripts/add_user.py <username> <user_type> [max_rating]
+    docker exec gatekeeper python /app/scripts/add_user.py <username> <user_type> [max_rating] [jellyseerr_username]
 
 Examples:
-    docker exec gatekeeper python /app/scripts/add_user.py kevin admin
-    docker exec gatekeeper python /app/scripts/add_user.py Aubrey kid PG
-    docker exec gatekeeper python /app/scripts/add_user.py boyz kid PG-13
+    docker exec gatekeeper python /app/scripts/add_user.py kevin admin - admin
+    docker exec gatekeeper python /app/scripts/add_user.py Aubrey kid PG aubrey
+    docker exec gatekeeper python /app/scripts/add_user.py boyz kid PG-13 boyz
     docker exec gatekeeper python /app/scripts/add_user.py mom adult
 
 User Types:
@@ -19,6 +19,11 @@ User Types:
 
 Max Rating (for kids/teens):
     - G, PG, PG-13, R (default based on user_type)
+    - Use '-' to skip and use default
+
+Jellyseerr Username:
+    - The username in Jellyseerr (may differ from local username)
+    - Used to link requests from Jellyseerr to local users
 """
 
 import sys
@@ -31,7 +36,7 @@ from gatekeeper.app import create_app
 from gatekeeper.models import db, User
 
 
-def add_user(username: str, user_type: str, max_rating: str = None):
+def add_user(username: str, user_type: str, max_rating: str = None, jellyseerr_username: str = None):
     """Add or update a user in the database."""
     app = create_app()
 
@@ -42,6 +47,10 @@ def add_user(username: str, user_type: str, max_rating: str = None):
             print(f"Error: Invalid user type '{user_type}'")
             print(f"Valid types: {', '.join(valid_types)}")
             sys.exit(1)
+
+        # Handle '-' as "use default"
+        if max_rating == '-':
+            max_rating = None
 
         # Set default max_rating based on user type
         if max_rating is None:
@@ -57,12 +66,15 @@ def add_user(username: str, user_type: str, max_rating: str = None):
             print(f"Updating existing user: {username}")
             user.user_type = user_type
             user.max_rating = max_rating
+            if jellyseerr_username:
+                user.jellyseerr_username = jellyseerr_username
         else:
             print(f"Creating new user: {username}")
             user = User(
                 username=username,
                 user_type=user_type,
                 max_rating=max_rating,
+                jellyseerr_username=jellyseerr_username,
             )
             db.session.add(user)
 
@@ -70,11 +82,13 @@ def add_user(username: str, user_type: str, max_rating: str = None):
 
         print(f"\nUser configured:")
         print(f"  Username: {user.username}")
+        print(f"  Jellyseerr Username: {user.jellyseerr_username or '(same as username)'}")
         print(f"  Type: {user.user_type}")
         print(f"  Max Rating: {user.max_rating or 'unlimited'}")
         print(f"\nAll users:")
         for u in User.query.all():
-            print(f"  - {u.username}: {u.user_type} (max: {u.max_rating or 'unlimited'})")
+            js_user = f" (jellyseerr: {u.jellyseerr_username})" if u.jellyseerr_username else ""
+            print(f"  - {u.username}{js_user}: {u.user_type} (max: {u.max_rating or 'unlimited'})")
 
 
 def list_users():
@@ -90,7 +104,8 @@ def list_users():
         else:
             print("Configured users:")
             for u in users:
-                print(f"  - {u.username}: {u.user_type} (max: {u.max_rating or 'unlimited'})")
+                js_user = f" (jellyseerr: {u.jellyseerr_username})" if u.jellyseerr_username else ""
+                print(f"  - {u.username}{js_user}: {u.user_type} (max: {u.max_rating or 'unlimited'})")
 
 
 if __name__ == '__main__':
@@ -106,11 +121,12 @@ if __name__ == '__main__':
 
     if len(sys.argv) < 3:
         print("Error: Missing arguments")
-        print("Usage: add_user.py <username> <user_type> [max_rating]")
+        print("Usage: add_user.py <username> <user_type> [max_rating] [jellyseerr_username]")
         sys.exit(1)
 
     username = sys.argv[1]
     user_type = sys.argv[2]
     max_rating = sys.argv[3] if len(sys.argv) > 3 else None
+    jellyseerr_username = sys.argv[4] if len(sys.argv) > 4 else None
 
-    add_user(username, user_type, max_rating)
+    add_user(username, user_type, max_rating, jellyseerr_username)

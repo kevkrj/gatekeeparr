@@ -12,6 +12,7 @@ class User(db.Model, TimestampMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     jellyseerr_id = db.Column(db.Integer, unique=True, index=True)
+    jellyseerr_username = db.Column(db.String(255), index=True)  # Username in Jellyseerr (may differ from local)
     jellyfin_id = db.Column(db.String(64), unique=True, index=True)
     username = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255))
@@ -97,6 +98,7 @@ class User(db.Model, TimestampMixin):
         return {
             'id': self.id,
             'jellyseerr_id': self.jellyseerr_id,
+            'jellyseerr_username': self.jellyseerr_username,
             'username': self.username,
             'email': self.email,
             'display_name': self.display_name,

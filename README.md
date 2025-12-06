@@ -236,10 +236,31 @@ docker-compose up -d
 
 ### 4. Set Up Users
 
-In the admin panel (or via API), configure your users:
-- Mark children as `user_type: kid`
-- Set `max_rating: PG` for younger kids
-- Set `max_rating: PG-13` for teens
+Users must be configured in Gatekeeper to enable proper routing. The `jellyseerr_username` field maps Jellyseerr usernames to local Gatekeeper users.
+
+**Via Docker CLI:**
+```bash
+# Add admin user (maps to Jellyseerr username "admin")
+docker exec gatekeeper python /app/scripts/add_user.py kevin admin - admin
+
+# Add kids (maps to Jellyseerr username "Aubrey")
+docker exec gatekeeper python /app/scripts/add_user.py aubrey kid PG Aubrey
+
+# Add teen
+docker exec gatekeeper python /app/scripts/add_user.py teen_user teen PG-13 TeenJellyseerr
+
+# Add adult
+docker exec gatekeeper python /app/scripts/add_user.py spouse adult - SpouseJellyseerr
+```
+
+**Via API:**
+```bash
+curl -X POST http://localhost:5000/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"username": "kevin", "user_type": "admin", "jellyseerr_username": "admin"}'
+```
+
+**Important:** The `jellyseerr_username` must match exactly what Jellyseerr sends in webhooks (case-insensitive). Check your Jellyseerr user list to find the correct usernames.
 
 ## Configuration
 

@@ -64,7 +64,7 @@ def update_user(user_id):
     allowed_fields = [
         'user_type', 'requires_approval', 'max_rating',
         'quota_daily', 'quota_weekly', 'quota_monthly',
-        'display_name'
+        'display_name', 'jellyseerr_username'
     ]
 
     # Validate user_type
@@ -117,6 +117,7 @@ def create_user():
         requires_approval=data.get('requires_approval', False),
         max_rating=data.get('max_rating'),
         jellyseerr_id=data.get('jellyseerr_id'),
+        jellyseerr_username=data.get('jellyseerr_username'),
         jellyfin_id=data.get('jellyfin_id'),
     )
 

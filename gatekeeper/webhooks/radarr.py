@@ -102,8 +102,14 @@ def radarr_webhook():
         logger.info(f"Linked to Jellyseerr request, requester: {requested_by}")
 
     # Look up user by username in our database (case-insensitive)
+    # Check both local username and jellyseerr_username since they may differ
     if requested_by:
-        user = User.query.filter(User.username.ilike(requested_by)).first()
+        user = User.query.filter(
+            db.or_(
+                User.username.ilike(requested_by),
+                User.jellyseerr_username.ilike(requested_by)
+            )
+        ).first()
         if user:
             media_request.user_id = user.id
             logger.info(f"Found user in database: {user.username} ({user.user_type})")

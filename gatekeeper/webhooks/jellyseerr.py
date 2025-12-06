@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
-from gatekeeper.models import db, Request
+from gatekeeper.models import db, Request, User
 from gatekeeper.services.router import UserRouter
 from gatekeeper.services.jellyseerr import JellyseerrClient
 
@@ -55,14 +55,17 @@ def jellyseerr_webhook():
 
     # Jellyseerr webhook uses requestedBy_username, requestedBy_email format
     username = request_info.get('requestedBy_username') or request_info.get('requestedBy_email', 'Unknown')
-    jellyseerr_user_id = None  # Not provided in webhook, would need API lookup
 
-    # Get or create user
-    router = UserRouter()
-    user = None
+    # Look up user by jellyseerr_username or local username
+    user = User.query.filter(
+        db.or_(
+            User.username.ilike(username),
+            User.jellyseerr_username.ilike(username)
+        )
+    ).first()
 
-    if jellyseerr_user_id:
-        user = router.lookup_user_by_jellyseerr_id(jellyseerr_user_id)
+    if user:
+        logger.info(f"Found user in database: {user.username} ({user.user_type})")
 
     # Create request record for tracking
     media_request = Request.query.filter_by(

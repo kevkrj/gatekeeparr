@@ -11,7 +11,7 @@ import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
-from gatekeeper.models import db, Request
+from gatekeeper.models import db, Request, User
 from gatekeeper.services.analyzer import get_analyzer
 from gatekeeper.services.router import UserRouter, RoutingDecision
 from gatekeeper.services.notifier import get_notifier
@@ -84,12 +84,42 @@ def sonarr_webhook():
     media_request.status = Request.STATUS_ANALYZING
     db.session.commit()
 
-    # Try to identify the requester
+    # Try to identify the requester from Jellyseerr webhook data
+    user = None
     requested_by = None
-    tags = series.get('tags', [])
-    if tags:
-        requested_by = f"Tag: {tags[0]}"
+
+    # First check if Jellyseerr already sent us this request (by TVDB ID)
+    jellyseerr_request = Request.query.filter_by(
+        tmdb_id=str(tvdb_id) if tvdb_id else None,
+        media_type='series'
+    ).filter(Request.requested_by_username.isnot(None)).first()
+
+    if jellyseerr_request and jellyseerr_request.id != media_request.id:
+        # Copy user info from the Jellyseerr-tracked request
+        requested_by = jellyseerr_request.requested_by_username
         media_request.requested_by_username = requested_by
+        media_request.jellyseerr_request_id = jellyseerr_request.jellyseerr_request_id
+        logger.info(f"Linked to Jellyseerr request, requester: {requested_by}")
+
+    # Look up user by username in our database (case-insensitive)
+    # Check both local username and jellyseerr_username since they may differ
+    if requested_by:
+        user = User.query.filter(
+            db.or_(
+                User.username.ilike(requested_by),
+                User.jellyseerr_username.ilike(requested_by)
+            )
+        ).first()
+        if user:
+            media_request.user_id = user.id
+            logger.info(f"Found user in database: {user.username} ({user.user_type})")
+
+    # Fallback: Check for tags that might identify requester
+    if not requested_by:
+        tags = series.get('tags', [])
+        if tags:
+            requested_by = f"Tag: {tags[0]}"
+            media_request.requested_by_username = requested_by
 
     # Check if certification is already known from Sonarr
     router = UserRouter()

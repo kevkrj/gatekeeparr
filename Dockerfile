@@ -25,6 +25,7 @@ ENV PATH=/root/.local/bin:$PATH
 
 # Copy application code
 COPY gatekeeper/ ./gatekeeper/
+COPY scripts/ ./scripts/
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data
