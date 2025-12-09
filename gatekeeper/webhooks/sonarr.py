@@ -16,6 +16,7 @@ from gatekeeper.services.analyzer import get_analyzer
 from gatekeeper.services.router import UserRouter, RoutingDecision
 from gatekeeper.services.notifier import get_notifier
 from gatekeeper.services.sonarr import SonarrClient
+from gatekeeper.services.content_data import fetch_content_data
 
 logger = logging.getLogger(__name__)
 
@@ -161,23 +162,42 @@ def sonarr_webhook():
         logger.info(f"Using known certification for {title}: {certification}")
         result = router.process_request_by_certification(media_request, certification)
 
-        # If held, get AI summary so parents know WHY content is rated this way
+        # If held, get AI content summary so parents know WHAT content their child would see
         if result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-            logger.info(f"Content held - fetching AI summary for {title}")
+            logger.info(f"Content held - fetching content data and AI summary for {title}")
             try:
+                # Fetch detailed content info from Common Sense Media (only for held content)
+                content_info = fetch_content_data(title, media_type='tv', year=year)
+                content_data_str = None
+                if content_info.has_data():
+                    content_data_str = content_info.to_prompt_context()
+                    logger.info(f"Got CSM data for {title}: age={content_info.age_rating}")
+                else:
+                    logger.info(f"No CSM data found for {title}: {content_info.error}")
+
                 analyzer = get_analyzer()
-                analysis = analyzer.analyze(title, overview, year)
-                # Update request with AI insights (keep metadata rating)
+                # Use summarize_content (not analyze) - we have the rating, just need content details
+                analysis = analyzer.summarize_content(
+                    title=title,
+                    overview=overview,
+                    rating=certification,
+                    media_type='tv',
+                    year=year,
+                    content_data=content_data_str
+                )
+                # Update request with AI insights (keep official rating from TMDB)
                 media_request.ai_summary = analysis.summary
                 media_request.ai_concerns = analysis.concerns
-                media_request.ai_provider = f"metadata+{analysis.provider}"
+                media_request.ai_provider = f"tmdb+{analysis.provider}"
+                if content_info.has_data():
+                    media_request.ai_provider += "+csm"
                 media_request.ai_model = analysis.model
                 media_request.analysis_duration_ms = analysis.duration_ms
                 db.session.commit()
                 used_ai = True
-                logger.info(f"AI summary for {title}: {analysis.summary[:100]}...")
+                logger.info(f"AI content summary for {title}: {analysis.summary[:100]}...")
             except Exception as e:
-                logger.warning(f"AI summary failed for {title}, using metadata only: {e}")
+                logger.warning(f"AI content summary failed for {title}, using rating only: {e}")
     else:
         # No certification available - fall back to AI analysis
         logger.info(f"No certification for {title}, using AI analysis")

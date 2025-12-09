@@ -11,6 +11,9 @@ SQLAlchemy>=2.0.0
 # HTTP client
 requests>=2.31.0
 
+# HTML parsing (for Common Sense Media scraping)
+beautifulsoup4>=4.12.0
+
 # AI Providers
 anthropic>=0.39.0      # Claude
 openai>=1.0.0          # OpenAI and Grok (OpenAI-compatible API)
