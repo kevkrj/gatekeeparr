@@ -12,7 +12,6 @@ from flask import Blueprint, request, jsonify
 
 from gatekeeper.models import db, Request, Approval
 from gatekeeper.services.jellyseerr import JellyseerrClient
-from gatekeeper.services.jellyfin import JellyfinClient
 
 logger = logging.getLogger(__name__)
 
@@ -95,40 +94,10 @@ def _handle_approve(media_request: Request, title: str, user: str):
 
         logger.info(f"Approved {title} by {user} (Jellyseerr #{jellyseerr_id})")
 
-        # Try to add to Kids Approved collection in Jellyfin
-        _try_add_to_kids_collection(media_request)
-
         # Format response message
         return _format_approved_message(media_request, title, user)
     else:
         return jsonify({'ephemeral_text': f'Error approving {title} in Jellyseerr'})
-
-
-def _try_add_to_kids_collection(media_request: Request):
-    """
-    Try to add the approved item to the Kids Approved collection in Jellyfin.
-
-    Note: The movie may not exist in Jellyfin yet (still downloading).
-    This is a best-effort operation - if it fails, we log and continue.
-    The item can be added manually later or via a scheduled job.
-    """
-    if not media_request.tmdb_id:
-        logger.warning(f"Cannot add to kids collection: No TMDB ID for {media_request.title}")
-        return
-
-    try:
-        jellyfin = JellyfinClient()
-        success = jellyfin.add_to_kids_collection(
-            tmdb_id=media_request.tmdb_id,
-            media_type=media_request.media_type
-        )
-        if success:
-            logger.info(f"Added {media_request.title} to Kids Approved collection")
-        else:
-            # Movie probably not in Jellyfin yet (still downloading)
-            logger.info(f"Could not add {media_request.title} to Kids Approved collection (may not be downloaded yet)")
-    except Exception as e:
-        logger.warning(f"Failed to add to kids collection: {e}")
 
 
 def _handle_deny(media_request: Request, title: str, user: str):

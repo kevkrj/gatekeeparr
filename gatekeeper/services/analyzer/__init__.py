@@ -17,7 +17,7 @@ from gatekeeper.config import get_config, AIConfig
 from .base import ContentAnalyzer, AnalysisResult
 from .ollama import OllamaAnalyzer
 from .claude import ClaudeAnalyzer
-from .openai_compat import OpenAIAnalyzer, GrokAnalyzer
+from .openai_grok import OpenAIAnalyzer, GrokAnalyzer
 
 logger = logging.getLogger(__name__)
 
