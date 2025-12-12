@@ -11,9 +11,11 @@ import logging
 import os
 from pathlib import Path
 from flask import Blueprint, request, jsonify
+import requests as http_requests
 
 from gatekeeper.models import db, Request
 from gatekeeper.services.tmdb import TMDBClient
+from gatekeeper.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +120,7 @@ def _handle_download(data: dict):
             success = _create_symlink(folder_path, title)
             if success:
                 logger.info(f"Auto-added {title} to Kids Approved (rating: {rating})")
+                _refresh_jellyfin_library(folder_path, title)
                 return jsonify({
                     'status': 'ok',
                     'symlink': True,
@@ -160,6 +163,7 @@ def _handle_download(data: dict):
 
     if success:
         logger.info(f"Created Kids Approved symlink for {title} (approved kid request)")
+        _refresh_jellyfin_library(folder_path, title)
         return jsonify({'status': 'ok', 'symlink': True, 'title': title})
     else:
         return jsonify({'status': 'ok', 'symlink': False, 'reason': 'Symlink creation failed'})
@@ -200,6 +204,35 @@ def _create_symlink(source_folder: str, title: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to create symlink for {title}: {e}")
         return False
+
+
+def _refresh_jellyfin_library(movie_path: str, title: str):
+    """
+    Notify Jellyfin to rescan the Kids Movies library for new content.
+
+    Args:
+        movie_path: Path to the movie in kids-approved folder
+        title: Movie title (for logging)
+    """
+    config = get_config()
+    if not config.jellyfin.api_key:
+        logger.debug("Jellyfin API key not configured, skipping refresh")
+        return
+
+    try:
+        # Trigger a library scan - Jellyfin will detect the new content
+        url = f"{config.jellyfin.url}/Library/Refresh"
+        response = http_requests.post(
+            url,
+            headers={"X-Emby-Token": config.jellyfin.api_key},
+            timeout=10
+        )
+        if response.status_code in (200, 204):
+            logger.info(f"Triggered Jellyfin library refresh for {title}")
+        else:
+            logger.warning(f"Jellyfin refresh returned {response.status_code}")
+    except Exception as e:
+        logger.warning(f"Failed to refresh Jellyfin library: {e}")
 
 
 def cleanup_broken_symlinks() -> int:
