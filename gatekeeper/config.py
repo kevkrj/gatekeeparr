@@ -13,17 +13,6 @@ class AIConfig:
     base_url: Optional[str] = None  # For Ollama or custom endpoints
     model: Optional[str] = None  # Model override
 
-    # Default models per provider
-    DEFAULT_MODELS = {
-        "claude": "claude-sonnet-4-20250514",
-        "ollama": "llama3.2",
-        "openai": "gpt-4o-mini",
-        "grok": "grok-2-latest"
-    }
-
-    def get_model(self) -> str:
-        """Get model name, using default if not specified"""
-        return self.model or self.DEFAULT_MODELS.get(self.provider, "claude-sonnet-4-20250514")
 
 
 @dataclass
@@ -45,6 +34,21 @@ class SonarrConfig:
     """Sonarr connection configuration"""
     url: str = "http://localhost:8989"
     api_key: Optional[str] = None
+
+
+@dataclass
+class TMDBConfig:
+    """TMDB API configuration for direct rating lookups"""
+    api_key: Optional[str] = None
+    base_url: str = "https://api.themoviedb.org/3"
+
+
+@dataclass
+class JellyfinConfig:
+    """Jellyfin connection configuration"""
+    url: str = "http://localhost:8096"
+    api_key: Optional[str] = None
+    kids_collection_id: Optional[str] = None
 
 
 @dataclass
@@ -73,8 +77,10 @@ class Config:
     # Services
     ai: AIConfig = field(default_factory=AIConfig)
     jellyseerr: JellyseerrConfig = field(default_factory=JellyseerrConfig)
+    jellyfin: JellyfinConfig = field(default_factory=JellyfinConfig)
     radarr: RadarrConfig = field(default_factory=RadarrConfig)
     sonarr: SonarrConfig = field(default_factory=SonarrConfig)
+    tmdb: TMDBConfig = field(default_factory=TMDBConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
 
     # Content filtering defaults
@@ -102,6 +108,11 @@ class Config:
                 url=os.getenv("JELLYSEERR_URL", "http://localhost:5055"),
                 api_key=os.getenv("JELLYSEERR_API_KEY"),
             ),
+            jellyfin=JellyfinConfig(
+                url=os.getenv("JELLYFIN_URL", "http://localhost:8096"),
+                api_key=os.getenv("JELLYFIN_API_KEY"),
+                kids_collection_id=os.getenv("JELLYFIN_KIDS_COLLECTION_ID"),
+            ),
             radarr=RadarrConfig(
                 url=os.getenv("RADARR_URL", "http://localhost:7878"),
                 api_key=os.getenv("RADARR_API_KEY"),
@@ -109,6 +120,9 @@ class Config:
             sonarr=SonarrConfig(
                 url=os.getenv("SONARR_URL", "http://localhost:8989"),
                 api_key=os.getenv("SONARR_API_KEY"),
+            ),
+            tmdb=TMDBConfig(
+                api_key=os.getenv("TMDB_API_KEY"),
             ),
             notifications=NotificationConfig(
                 mattermost_webhook=os.getenv("MATTERMOST_WEBHOOK"),

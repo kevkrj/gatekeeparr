@@ -4,9 +4,13 @@ services:
     container_name: gatekeeper
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5023:5000"
     volumes:
       - ./data:/app/data
+      - /media/movies:/media/movies:ro
+      - /media/tv:/media/tv:ro
+      - /media/kids-approved/movies:/media/kids-approved/movies:rw
+      - /media/kids-approved/tv:/media/kids-approved/tv:rw
     env_file:
       - .env
     environment:

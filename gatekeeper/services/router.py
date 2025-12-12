@@ -12,9 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from gatekeeper.models import db, User, Request
+from gatekeeper.models import db, User
 from gatekeeper.services.jellyseerr import JellyseerrClient, JellyseerrUser
-from gatekeeper.services.analyzer import AnalysisResult
 from gatekeeper.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -61,6 +60,10 @@ class UserRouter:
         self.jellyseerr = jellyseerr_client or JellyseerrClient()
         self.config = get_config()
 
+    # -------------------------------------------------------------------------
+    # User Management
+    # -------------------------------------------------------------------------
+
     def get_or_create_user(self, jellyseerr_user: JellyseerrUser) -> User:
         """
         Get or create a local user from Jellyseerr user info.
@@ -99,31 +102,6 @@ class UserRouter:
         logger.info(f"Created new user: {user.username} (type: {user.user_type})")
         return user
 
-    def lookup_user_by_jellyseerr_id(self, jellyseerr_id: int) -> Optional[User]:
-        """
-        Look up user by Jellyseerr ID, fetching from API if needed.
-
-        Args:
-            jellyseerr_id: Jellyseerr user ID
-
-        Returns:
-            User or None
-        """
-        # Check local database first
-        user = User.query.filter_by(jellyseerr_id=jellyseerr_id).first()
-        if user:
-            return user
-
-        # Fetch from Jellyseerr
-        try:
-            jellyseerr_user = self.jellyseerr.get_user(jellyseerr_id)
-            if jellyseerr_user:
-                return self.get_or_create_user(jellyseerr_user)
-        except Exception as e:
-            logger.error(f"Failed to fetch user {jellyseerr_id} from Jellyseerr: {e}")
-
-        return None
-
     def sync_users_from_jellyseerr(self) -> list[User]:
         """
         Sync all users from Jellyseerr to local database.
@@ -146,6 +124,10 @@ class UserRouter:
             logger.error(f"Failed to sync users from Jellyseerr: {e}")
             return []
 
+    # -------------------------------------------------------------------------
+    # Routing Logic
+    # -------------------------------------------------------------------------
+
     def is_rating_blocked(self, rating: str) -> bool:
         """Check if a rating is in the blocked list (always denied)"""
         if not rating:
@@ -159,15 +141,12 @@ class UserRouter:
         media_type: str = "movie"
     ) -> RoutingResult:
         """
-        Route a request based on known certification without AI analysis.
-
-        This is used when the certification is already known from Radarr/Sonarr
-        to skip unnecessary AI calls.
+        Route a request based on known certification.
 
         Args:
             user: User who made the request (None if unknown)
             certification: Known certification (e.g., 'PG', 'TV-MA')
-            media_type: 'movie' or 'series'
+            media_type: 'movie' or 'tv'
 
         Returns:
             RoutingResult with decision and reason
@@ -231,163 +210,3 @@ class UserRouter:
             reason=f"{rating} is within allowed ratings for {user.user_type}",
             user=user,
         )
-
-    def process_request_by_certification(
-        self,
-        request: Request,
-        certification: str,
-    ) -> RoutingResult:
-        """
-        Process a request using known certification (no AI).
-
-        Args:
-            request: The media request to process
-            certification: Known certification from Radarr/Sonarr
-
-        Returns:
-            RoutingResult with decision
-        """
-        # Store the certification as the rating (no AI analysis)
-        request.ai_rating = certification
-        request.ai_summary = f"Certification from {'Radarr' if request.media_type == 'movie' else 'Sonarr'} metadata"
-        request.ai_provider = "metadata"
-        request.ai_model = None
-        request.analysis_duration_ms = 0
-
-        # Get routing decision
-        result = self.route_by_certification(request.user, certification, request.media_type)
-
-        # Update request status based on decision
-        if result.decision == RoutingDecision.AUTO_APPROVE:
-            request.status = Request.STATUS_AUTO_APPROVED
-        elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-            request.status = Request.STATUS_HELD
-            request.held_reason = result.reason
-        elif result.decision == RoutingDecision.BLOCK:
-            request.status = Request.STATUS_DENIED
-            request.held_reason = result.reason
-
-        db.session.commit()
-        logger.info(f"Request {request.id} ({request.title}): {result.decision.value} - {result.reason} [metadata]")
-
-        return result
-
-    def route_request(
-        self,
-        user: Optional[User],
-        analysis: AnalysisResult,
-        media_type: str = "movie"
-    ) -> RoutingResult:
-        """
-        Determine how to route a content request.
-
-        Args:
-            user: User who made the request (None if unknown)
-            analysis: AI analysis result with rating
-            media_type: 'movie' or 'series'
-
-        Returns:
-            RoutingResult with decision and reason
-        """
-        rating = analysis.rating.upper() if analysis.rating else "UNKNOWN"
-
-        # Rule 1: Blocked ratings are always blocked
-        if self.is_rating_blocked(rating):
-            return RoutingResult(
-                decision=RoutingDecision.BLOCK,
-                reason=f"Rating {rating} is blocked",
-                user=user,
-                requires_notification=True,
-            )
-
-        # Rule 2: Unknown user - hold for approval
-        if user is None:
-            return RoutingResult(
-                decision=RoutingDecision.HOLD_FOR_APPROVAL,
-                reason="Unknown requester - held for review",
-                requires_notification=True,
-            )
-
-        # Rule 3: Admins always auto-approve
-        if user.is_admin():
-            return RoutingResult(
-                decision=RoutingDecision.AUTO_APPROVE,
-                reason="Admin user - auto-approved",
-                user=user,
-            )
-
-        # Rule 4: Adults without approval flag - auto-approve
-        if user.is_adult() and not user.requires_approval:
-            return RoutingResult(
-                decision=RoutingDecision.AUTO_APPROVE,
-                reason="Adult user - auto-approved",
-                user=user,
-            )
-
-        # Rule 5: Auto-deny R-rated content for kids
-        # Kids should never be able to request R-rated content, even with approval
-        if user.is_kid() and rating in ('R', 'TV-MA'):
-            return RoutingResult(
-                decision=RoutingDecision.BLOCK,
-                reason=f"{rating} content auto-denied for kid user",
-                user=user,
-                requires_notification=True,
-            )
-
-        # Rule 6: Check if rating requires approval for this user (teens with R, etc.)
-        if user.needs_approval_for_rating(rating):
-            return RoutingResult(
-                decision=RoutingDecision.HOLD_FOR_APPROVAL,
-                reason=f"{rating} content requires approval for {user.user_type} user",
-                user=user,
-                requires_notification=True,
-            )
-
-        # Rule 7: Rating is within user's allowed range
-        return RoutingResult(
-            decision=RoutingDecision.AUTO_APPROVE,
-            reason=f"{rating} is within allowed ratings for {user.user_type}",
-            user=user,
-        )
-
-    def process_request(
-        self,
-        request: Request,
-        analysis: AnalysisResult,
-    ) -> RoutingResult:
-        """
-        Process a request and update its status based on routing.
-
-        Args:
-            request: The media request to process
-            analysis: AI analysis result
-
-        Returns:
-            RoutingResult with decision
-        """
-        # Store analysis results
-        request.ai_rating = analysis.rating
-        request.ai_summary = analysis.summary
-        request.ai_concerns = analysis.concerns
-        request.analyzed_at = analysis.analyzed_at
-        request.ai_provider = analysis.provider
-        request.ai_model = analysis.model
-        request.analysis_duration_ms = analysis.duration_ms
-
-        # Get routing decision
-        result = self.route_request(request.user, analysis, request.media_type)
-
-        # Update request status based on decision
-        if result.decision == RoutingDecision.AUTO_APPROVE:
-            request.status = Request.STATUS_AUTO_APPROVED
-        elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-            request.status = Request.STATUS_HELD
-            request.held_reason = result.reason
-        elif result.decision == RoutingDecision.BLOCK:
-            request.status = Request.STATUS_DENIED
-            request.held_reason = result.reason
-
-        db.session.commit()
-        logger.info(f"Request {request.id} ({request.title}): {result.decision.value} - {result.reason}")
-
-        return result

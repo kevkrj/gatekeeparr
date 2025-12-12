@@ -1,245 +1,213 @@
 """
 Sonarr Webhook Handler
 
-Handles incoming webhooks from Sonarr for:
-- SeriesAdd: New series added to library
-- Download: Episode file downloaded/imported
-- Grab: Release grabbed for download
+Handles download completion events from Sonarr.
+Creates symlinks in the Kids Approved library for:
+1. Any TV-Y/TV-Y7/TV-G/TV-PG rated series (auto-add)
+2. Approved kid requests for TV-14+ series
 """
 
 import logging
-from datetime import datetime
+from pathlib import Path
 from flask import Blueprint, request, jsonify
 
-from gatekeeper.models import db, Request, User
-from gatekeeper.services.analyzer import get_analyzer
-from gatekeeper.services.router import UserRouter, RoutingDecision
-from gatekeeper.services.notifier import get_notifier
-from gatekeeper.services.sonarr import SonarrClient
-from gatekeeper.services.content_data import fetch_content_data
+from gatekeeper.models import db, Request
+from gatekeeper.services.tmdb import TMDBClient
 
 logger = logging.getLogger(__name__)
 
-sonarr_bp = Blueprint('sonarr', __name__, url_prefix='/webhook')
+# Ratings that are automatically kid-safe
+KIDS_SAFE_RATINGS = ['G', 'PG', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG']
+
+sonarr_bp = Blueprint('sonarr', __name__)
+
+# Path configuration - where symlinks go
+KIDS_APPROVED_TV_PATH = '/media/kids-approved/tv'
+TV_PATH = '/media/tv'
+
+# Path translation: *arr containers use different mount points
+# Sonarr uses /tv, Gatekeeper uses /media/tv
+PATH_MAPPINGS = [
+    ('/tv/', '/media/tv/'),
+    ('/tv', '/media/tv'),
+]
 
 
-@sonarr_bp.route('/sonarr', methods=['POST'])
-def sonarr_webhook():
+def _translate_path(path: str) -> str:
+    """Translate *arr container paths to Gatekeeper paths."""
+    for arr_path, local_path in PATH_MAPPINGS:
+        if path.startswith(arr_path):
+            return path.replace(arr_path, local_path, 1)
+    return path
+
+
+@sonarr_bp.route('/webhook/sonarr', methods=['POST'])
+def handle_sonarr_webhook():
     """
     Handle Sonarr webhook events.
 
-    Supported events:
-    - SeriesAdd: Triggers content analysis
-    - Download: Triggers content analysis if not already done
+    We only care about 'Download' events (on import).
+    When an episode finishes downloading, check if the series should be
+    in kids-approved and create a symlink if so.
+
+    Sonarr webhook payload for Download:
+    {
+        "eventType": "Download",
+        "series": {
+            "id": 123,
+            "title": "Series Title",
+            "year": 2024,
+            "tvdbId": 456789,
+            "tvMazeId": 12345,
+            "imdbId": "tt1234567",
+            "path": "/media/tv/Series Title (2024)"
+        },
+        "episodes": [...],
+        "episodeFile": {
+            "relativePath": "Season 01/Series Title - S01E01 - Episode Name.mkv",
+            "path": "/media/tv/Series Title (2024)/Season 01/..."
+        },
+        "isUpgrade": false
+    }
     """
-    data = request.json
-    event_type = data.get('eventType')
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
 
-    logger.info(f"Sonarr webhook: {event_type}")
-    logger.debug(f"Webhook data: {data}")
+        event_type = data.get('eventType')
+        logger.info(f"Sonarr webhook received: {event_type}")
 
-    # Only process relevant events
-    if event_type not in ('Download', 'SeriesAdd', 'Grab'):
-        logger.debug(f"Ignoring event type: {event_type}")
-        return jsonify({'status': 'ignored', 'event': event_type}), 200
+        # Only process Download events (on import)
+        if event_type != 'Download':
+            logger.debug(f"Ignoring event type: {event_type}")
+            return jsonify({'status': 'ignored', 'reason': f'Event type {event_type} not handled'})
 
+        return _handle_download(data)
+
+    except Exception as e:
+        logger.error(f"Error handling Sonarr webhook: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def _handle_download(data: dict):
+    """Handle a series episode download completion event."""
     series = data.get('series', {})
-    title = series.get('title', 'Unknown')
-    overview = series.get('overview', '')
-    year = series.get('year')
-    series_id = series.get('id')
     tvdb_id = series.get('tvdbId')
-    imdb_id = series.get('imdbId')
+    title = series.get('title', 'Unknown')
+    folder_path = series.get('path')
 
-    # Check if we've already processed this series
-    existing_request = Request.query.filter_by(
-        media_type='series',
-        media_id=series_id
-    ).first()
+    if not folder_path:
+        logger.warning(f"No folder path in Sonarr download event for {title}")
+        return jsonify({'status': 'ignored', 'reason': 'No folder path'})
 
-    if existing_request and existing_request.is_resolved():
-        logger.info(f"Series {title} already processed: {existing_request.status}")
-        return jsonify({
-            'status': 'already_processed',
-            'request_id': existing_request.id,
-            'decision': existing_request.status
-        }), 200
+    # Translate Sonarr's container path to Gatekeeper's path
+    folder_path = _translate_path(folder_path)
+    logger.debug(f"Translated path for {title}: {folder_path}")
 
-    # Create or update request record
-    if existing_request:
-        media_request = existing_request
-    else:
-        media_request = Request(
-            media_type='series',
-            media_id=series_id,
-            tmdb_id=tvdb_id,  # Note: Sonarr uses TVDB, storing in tmdb_id field for now
-            imdb_id=imdb_id,
-            title=title,
-            year=year,
-            overview=overview,
-            routed_to='sonarr',
-            requested_at=datetime.utcnow(),
-        )
-        db.session.add(media_request)
-
-    media_request.status = Request.STATUS_ANALYZING
-    db.session.commit()
-
-    # Try to identify the requester from Jellyseerr webhook data
-    user = None
-    requested_by = None
-
-    # First check if Jellyseerr already sent us this request
-    # Try multiple matching strategies since Jellyseerr uses TMDB IDs and Sonarr uses TVDB IDs
-    jellyseerr_request = None
-
-    # Strategy 1: Match by title (most reliable for TV shows)
-    if title:
-        jellyseerr_request = Request.query.filter(
-            Request.media_type == 'series',
-            Request.title.ilike(f"%{title}%"),
-            Request.requested_by_username.isnot(None)
+    # Check 1: Is this a kids-safe rated series? Auto-add to kids approved
+    # Try TMDB first (need to look up by TVDB ID or title)
+    try:
+        tmdb = TMDBClient()
+        # Sonarr provides tvdbId, we need to get TMDB rating
+        # First try to find TMDB ID from our request records
+        media_request = Request.query.filter_by(
+            media_type='series'
+        ).filter(
+            Request.title.ilike(f"%{title}%")
         ).order_by(Request.created_at.desc()).first()
 
-    # Strategy 2: Try TVDB ID stored in tmdb_id field (in case Jellyseerr sent TVDB)
-    if not jellyseerr_request and tvdb_id:
-        jellyseerr_request = Request.query.filter_by(
-            tmdb_id=str(tvdb_id),
-            media_type='series'
-        ).filter(Request.requested_by_username.isnot(None)).first()
+        tmdb_id = media_request.tmdb_id if media_request else None
+        rating = None
 
-    if jellyseerr_request and jellyseerr_request.id != media_request.id:
-        # Copy user info from the Jellyseerr-tracked request
-        requested_by = jellyseerr_request.requested_by_username
-        media_request.requested_by_username = requested_by
-        media_request.jellyseerr_request_id = jellyseerr_request.jellyseerr_request_id
-        logger.info(f"Linked to Jellyseerr request, requester: {requested_by}")
+        if tmdb_id:
+            rating = tmdb.get_tv_rating(tmdb_id)
+            logger.info(f"TMDB rating for {title}: {rating}")
 
-    # Look up user by username in our database (case-insensitive)
-    # Check both local username and jellyseerr_username since they may differ
-    if requested_by:
-        user = User.query.filter(
-            db.or_(
-                User.username.ilike(requested_by),
-                User.jellyseerr_username.ilike(requested_by)
-            )
-        ).first()
-        if user:
-            media_request.user_id = user.id
-            logger.info(f"Found user in database: {user.username} ({user.user_type})")
+        if rating and rating in KIDS_SAFE_RATINGS:
+            success = _create_symlink(folder_path, title)
+            if success:
+                logger.info(f"Auto-added {title} to Kids Approved (rating: {rating})")
+                return jsonify({
+                    'status': 'ok',
+                    'symlink': True,
+                    'title': title,
+                    'reason': f'Auto-added: {rating} rating'
+                })
+    except Exception as e:
+        logger.warning(f"Could not check TMDB rating for {title}: {e}")
 
-    # Fallback: Check for tags that might identify requester
-    if not requested_by:
-        tags = series.get('tags', [])
-        if tags:
-            requested_by = f"Tag: {tags[0]}"
-            media_request.requested_by_username = requested_by
+    # Check 2: Was this an approved kid request?
+    media_request = Request.query.filter_by(
+        media_type='series'
+    ).filter(
+        Request.title.ilike(f"%{title}%")
+    ).order_by(Request.created_at.desc()).first()
 
-    # Fast path: Admin/adult users get auto-approved without AI analysis
-    if user and user.user_type in ('admin', 'adult'):
-        sonarr = SonarrClient()
-        sonarr.monitor(series_id)
-        sonarr.search_series(series_id)
-        media_request.status = Request.STATUS_AUTO_APPROVED
-        media_request.held_reason = f"{user.user_type.title()} user - auto-approved"
-        db.session.commit()
-        logger.info(f"Fast auto-approved for {user.user_type}: {title}")
+    if not media_request:
+        logger.debug(f"No request found for series {title}")
+        return jsonify({'status': 'ok', 'symlink': False, 'reason': 'No matching request and not kids-safe rating'})
+
+    # Only create symlink for approved requests
+    if media_request.status not in (Request.STATUS_APPROVED, Request.STATUS_AUTO_APPROVED):
+        logger.debug(f"Request {media_request.id} status is {media_request.status}, not approved")
         return jsonify({
-            'status': 'auto_approve',
-            'request_id': media_request.id,
-            'reason': f'{user.user_type.title()} user - auto-approved',
-            'used_ai': False,
-        }), 200
+            'status': 'ok',
+            'symlink': False,
+            'reason': f'Request status is {media_request.status}'
+        })
 
-    # Check if certification is already known from Sonarr
-    router = UserRouter()
-    sonarr = SonarrClient()
-    certification = sonarr.get_certification(series_id)
-    used_ai = False
+    # Check if the user was a kid (only kids need symlinks for non-kids-safe content)
+    if media_request.user and media_request.user.user_type != 'kid':
+        logger.debug(f"Request by {media_request.user.username} is not a kid, skipping symlink")
+        return jsonify({
+            'status': 'ok',
+            'symlink': False,
+            'reason': f'Requester is {media_request.user.user_type}, not kid'
+        })
 
-    if certification:
-        # Use known certification for routing decision
-        logger.info(f"Using known certification for {title}: {certification}")
-        result = router.process_request_by_certification(media_request, certification)
+    # Create symlink for approved kid request
+    success = _create_symlink(folder_path, title)
 
-        # If held, get AI content summary so parents know WHAT content their child would see
-        if result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-            logger.info(f"Content held - fetching content data and AI summary for {title}")
-            try:
-                # Fetch detailed content info from Common Sense Media (only for held content)
-                content_info = fetch_content_data(title, media_type='tv', year=year)
-                content_data_str = None
-                if content_info.has_data():
-                    content_data_str = content_info.to_prompt_context()
-                    logger.info(f"Got CSM data for {title}: age={content_info.age_rating}")
-                else:
-                    logger.info(f"No CSM data found for {title}: {content_info.error}")
-
-                analyzer = get_analyzer()
-                # Use summarize_content (not analyze) - we have the rating, just need content details
-                analysis = analyzer.summarize_content(
-                    title=title,
-                    overview=overview,
-                    rating=certification,
-                    media_type='tv',
-                    year=year,
-                    content_data=content_data_str
-                )
-                # Update request with AI insights (keep official rating from TMDB)
-                media_request.ai_summary = analysis.summary
-                media_request.ai_concerns = analysis.concerns
-                media_request.ai_provider = f"tmdb+{analysis.provider}"
-                if content_info.has_data():
-                    media_request.ai_provider += "+csm"
-                media_request.ai_model = analysis.model
-                media_request.analysis_duration_ms = analysis.duration_ms
-                db.session.commit()
-                used_ai = True
-                logger.info(f"AI content summary for {title}: {analysis.summary[:100]}...")
-            except Exception as e:
-                logger.warning(f"AI content summary failed for {title}, using rating only: {e}")
+    if success:
+        logger.info(f"Created Kids Approved symlink for {title} (approved kid request)")
+        return jsonify({'status': 'ok', 'symlink': True, 'title': title})
     else:
-        # No certification available - fall back to AI analysis
-        logger.info(f"No certification for {title}, using AI analysis")
-        try:
-            analyzer = get_analyzer()
-            analysis = analyzer.analyze(title, overview, year)
-            logger.info(f"AI Analysis for {title}: {analysis.rating}")
-            used_ai = True
-        except Exception as e:
-            logger.error(f"Analysis failed for {title}: {e}")
-            media_request.status = Request.STATUS_ERROR
-            media_request.held_reason = f"Analysis error: {str(e)}"
-            db.session.commit()
-            return jsonify({'status': 'error', 'error': str(e)}), 500
+        return jsonify({'status': 'ok', 'symlink': False, 'reason': 'Symlink creation failed'})
 
-        result = router.process_request(media_request, analysis)
 
-    # Take action based on routing decision
-    if result.decision == RoutingDecision.AUTO_APPROVE:
-        # Ensure series is monitored and trigger search
-        sonarr.monitor(series_id)
-        sonarr.search_series(series_id)
-        logger.info(f"Auto-approved and searching: {title}")
+def _create_symlink(source_folder: str, title: str) -> bool:
+    """
+    Create a symlink from the source series folder to kids-approved.
 
-    elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-        # Unmonitor to pause downloads
-        sonarr.unmonitor(series_id)
-        # Send notification
-        notifier = get_notifier()
-        notifier.notify_held(media_request)
-        logger.info(f"Held for approval: {title}")
+    Args:
+        source_folder: Full path to series folder in /media/tv/
+        title: Series title (for logging)
 
-    elif result.decision == RoutingDecision.BLOCK:
-        # Delete the series
-        sonarr.delete_series(series_id, delete_files=True, add_exclusion=True)
-        logger.info(f"Blocked and deleted: {title}")
+    Returns:
+        True if symlink created successfully
+    """
+    try:
+        source = Path(source_folder)
 
-    return jsonify({
-        'status': result.decision.value,
-        'request_id': media_request.id,
-        'rating': media_request.ai_rating,
-        'reason': result.reason,
-        'source': media_request.ai_provider,
-        'used_ai': used_ai,
-    }), 200
+        if not source.exists():
+            logger.error(f"Source folder does not exist: {source_folder}")
+            return False
+
+        # Create symlink with same folder name
+        link_name = source.name
+        link_path = Path(KIDS_APPROVED_TV_PATH) / link_name
+
+        # Don't create if already exists
+        if link_path.exists() or link_path.is_symlink():
+            logger.info(f"Symlink already exists: {link_path}")
+            return True
+
+        # Create symlink
+        link_path.symlink_to(source)
+        logger.info(f"Created symlink: {link_path} -> {source}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to create symlink for {title}: {e}")
+        return False

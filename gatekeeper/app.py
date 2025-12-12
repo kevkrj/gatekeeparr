@@ -131,15 +131,15 @@ def create_app(config: Config = None) -> Flask:
 
 def _register_blueprints(app: Flask):
     """Register all blueprints"""
-    from gatekeeper.webhooks.radarr import radarr_bp
-    from gatekeeper.webhooks.sonarr import sonarr_bp
     from gatekeeper.webhooks.jellyseerr import jellyseerr_bp
     from gatekeeper.webhooks.actions import actions_bp
+    from gatekeeper.webhooks.radarr import radarr_bp
+    from gatekeeper.webhooks.sonarr import sonarr_bp
 
-    app.register_blueprint(radarr_bp)
-    app.register_blueprint(sonarr_bp)
     app.register_blueprint(jellyseerr_bp)
     app.register_blueprint(actions_bp)
+    app.register_blueprint(radarr_bp)
+    app.register_blueprint(sonarr_bp)
 
     # API blueprints
     from gatekeeper.api.requests import requests_bp

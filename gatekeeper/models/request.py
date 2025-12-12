@@ -79,15 +79,6 @@ class Request(db.Model, TimestampMixin):
         """Set AI concerns from a list"""
         self._ai_concerns = json.dumps(value) if value else None
 
-    def is_pending(self) -> bool:
-        return self.status in (self.STATUS_PENDING, self.STATUS_ANALYZING)
-
-    def is_held(self) -> bool:
-        return self.status == self.STATUS_HELD
-
-    def is_resolved(self) -> bool:
-        return self.status in (self.STATUS_APPROVED, self.STATUS_DENIED, self.STATUS_AUTO_APPROVED)
-
     def to_dict(self, include_analysis: bool = True) -> dict:
         """Convert request to dictionary for JSON serialization"""
         data = {

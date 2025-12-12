@@ -1,232 +1,246 @@
 """
 Radarr Webhook Handler
 
-Handles incoming webhooks from Radarr for:
-- MovieAdded: New movie added to library
-- Download: Movie file downloaded/imported
-- Grab: Release grabbed for download
+Handles download completion events from Radarr.
+Creates symlinks in the Kids Approved library for:
+1. Any G or PG rated movie (auto-add)
+2. Approved kid requests for PG-13+ movies
 """
 
 import logging
-from datetime import datetime
+import os
+from pathlib import Path
 from flask import Blueprint, request, jsonify
 
-from gatekeeper.models import db, Request, User
-from gatekeeper.services.analyzer import get_analyzer
-from gatekeeper.services.router import UserRouter, RoutingDecision
-from gatekeeper.services.notifier import get_notifier
-from gatekeeper.services.radarr import RadarrClient
-from gatekeeper.services.content_data import fetch_content_data
+from gatekeeper.models import db, Request
+from gatekeeper.services.tmdb import TMDBClient
 
 logger = logging.getLogger(__name__)
 
-radarr_bp = Blueprint('radarr', __name__, url_prefix='/webhook')
+# Ratings that are automatically kid-safe
+KIDS_SAFE_RATINGS = ['G', 'PG', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG']
+
+radarr_bp = Blueprint('radarr', __name__)
+
+# Path configuration - where symlinks go
+KIDS_APPROVED_MOVIES_PATH = '/media/kids-approved/movies'
+MOVIES_PATH = '/media/movies'
+
+# Path translation: *arr containers use different mount points
+# Radarr uses /movies, Gatekeeper uses /media/movies
+PATH_MAPPINGS = [
+    ('/movies/', '/media/movies/'),
+    ('/movies', '/media/movies'),
+]
 
 
-@radarr_bp.route('/radarr', methods=['POST'])
-def radarr_webhook():
+def _translate_path(path: str) -> str:
+    """Translate *arr container paths to Gatekeeper paths."""
+    for arr_path, local_path in PATH_MAPPINGS:
+        if path.startswith(arr_path):
+            return path.replace(arr_path, local_path, 1)
+    return path
+
+
+@radarr_bp.route('/webhook/radarr', methods=['POST'])
+def handle_radarr_webhook():
     """
     Handle Radarr webhook events.
 
-    Supported events:
-    - MovieAdded: Triggers content analysis
-    - Download: Triggers content analysis if not already done
+    We only care about 'Download' events (on import).
+    When a movie finishes downloading, check if it was an approved
+    kid request and create a symlink if so.
+
+    Radarr webhook payload for Download:
+    {
+        "eventType": "Download",
+        "movie": {
+            "id": 123,
+            "title": "Movie Title",
+            "year": 2024,
+            "tmdbId": 456789,
+            "imdbId": "tt1234567",
+            "folderPath": "/media/movies/Movie Title (2024)"
+        },
+        "movieFile": {
+            "relativePath": "Movie Title (2024).mkv",
+            "path": "/media/movies/Movie Title (2024)/Movie Title (2024).mkv"
+        },
+        "isUpgrade": false
+    }
     """
-    data = request.json
-    event_type = data.get('eventType')
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'status': 'error', 'message': 'No JSON data'}), 400
 
-    logger.info(f"Radarr webhook: {event_type}")
-    logger.debug(f"Webhook data: {data}")
+        event_type = data.get('eventType')
+        logger.info(f"Radarr webhook received: {event_type}")
 
-    # Only process relevant events
-    if event_type not in ('Download', 'MovieAdded', 'Grab'):
-        logger.debug(f"Ignoring event type: {event_type}")
-        return jsonify({'status': 'ignored', 'event': event_type}), 200
+        # Only process Download events (on import)
+        if event_type != 'Download':
+            logger.debug(f"Ignoring event type: {event_type}")
+            return jsonify({'status': 'ignored', 'reason': f'Event type {event_type} not handled'})
 
+        return _handle_download(data)
+
+    except Exception as e:
+        logger.error(f"Error handling Radarr webhook: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def _handle_download(data: dict):
+    """Handle a movie download completion event."""
     movie = data.get('movie', {})
-    title = movie.get('title', 'Unknown')
-    overview = movie.get('overview', '')
-    year = movie.get('year')
-    movie_id = movie.get('id')
     tmdb_id = movie.get('tmdbId')
-    imdb_id = movie.get('imdbId')
+    title = movie.get('title', 'Unknown')
+    folder_path = movie.get('folderPath')
 
-    # Check if we've already processed this movie
-    existing_request = Request.query.filter_by(
-        media_type='movie',
-        media_id=movie_id
-    ).first()
+    if not tmdb_id:
+        logger.warning(f"No TMDB ID in Radarr download event for {title}")
+        return jsonify({'status': 'ignored', 'reason': 'No TMDB ID'})
 
-    if existing_request and existing_request.is_resolved():
-        logger.info(f"Movie {title} already processed: {existing_request.status}")
-        return jsonify({
-            'status': 'already_processed',
-            'request_id': existing_request.id,
-            'decision': existing_request.status
-        }), 200
+    if not folder_path:
+        logger.warning(f"No folder path in Radarr download event for {title}")
+        return jsonify({'status': 'ignored', 'reason': 'No folder path'})
 
-    # Create or update request record
-    if existing_request:
-        media_request = existing_request
-    else:
-        media_request = Request(
-            media_type='movie',
-            media_id=movie_id,
-            tmdb_id=tmdb_id,
-            imdb_id=imdb_id,
-            title=title,
-            year=year,
-            overview=overview,
-            routed_to='radarr',
-            requested_at=datetime.utcnow(),
-        )
-        db.session.add(media_request)
+    # Translate Radarr's container path to Gatekeeper's path
+    folder_path = _translate_path(folder_path)
+    logger.debug(f"Translated path for {title}: {folder_path}")
 
-    media_request.status = Request.STATUS_ANALYZING
-    db.session.commit()
+    # Check 1: Is this a G/PG movie? Auto-add to kids approved
+    try:
+        tmdb = TMDBClient()
+        rating = tmdb.get_movie_rating(tmdb_id)
+        logger.info(f"TMDB rating for {title}: {rating}")
 
-    # Try to identify the requester from Jellyseerr webhook data
-    user = None
-    requested_by = None
+        if rating and rating in KIDS_SAFE_RATINGS:
+            success = _create_symlink(folder_path, title)
+            if success:
+                logger.info(f"Auto-added {title} to Kids Approved (rating: {rating})")
+                return jsonify({
+                    'status': 'ok',
+                    'symlink': True,
+                    'title': title,
+                    'reason': f'Auto-added: {rating} rating'
+                })
+    except Exception as e:
+        logger.warning(f"Could not check TMDB rating for {title}: {e}")
 
-    # First check if Jellyseerr already sent us this request (by TMDB ID)
-    jellyseerr_request = Request.query.filter_by(
-        tmdb_id=str(tmdb_id) if tmdb_id else None,
+    # Check 2: Was this an approved kid request?
+    media_request = Request.query.filter_by(
+        tmdb_id=tmdb_id,
         media_type='movie'
-    ).filter(Request.requested_by_username.isnot(None)).first()
+    ).order_by(Request.created_at.desc()).first()
 
-    if jellyseerr_request and jellyseerr_request.id != media_request.id:
-        # Copy user info from the Jellyseerr-tracked request
-        requested_by = jellyseerr_request.requested_by_username
-        media_request.requested_by_username = requested_by
-        media_request.jellyseerr_request_id = jellyseerr_request.jellyseerr_request_id
-        logger.info(f"Linked to Jellyseerr request, requester: {requested_by}")
+    if not media_request:
+        logger.debug(f"No request found for TMDB {tmdb_id} ({title})")
+        return jsonify({'status': 'ok', 'symlink': False, 'reason': 'No matching request and not G/PG'})
 
-    # Look up user by username in our database (case-insensitive)
-    # Check both local username and jellyseerr_username since they may differ
-    if requested_by:
-        user = User.query.filter(
-            db.or_(
-                User.username.ilike(requested_by),
-                User.jellyseerr_username.ilike(requested_by)
-            )
-        ).first()
-        if user:
-            media_request.user_id = user.id
-            logger.info(f"Found user in database: {user.username} ({user.user_type})")
-
-    # Fallback: Check for tags that might identify requester
-    if not requested_by:
-        tags = movie.get('tags', [])
-        if tags:
-            requested_by = f"Tag: {tags[0]}"
-            media_request.requested_by_username = requested_by
-
-    # Fast path: Admin/adult users get auto-approved without AI analysis
-    if user and user.user_type in ('admin', 'adult'):
-        radarr = RadarrClient()
-        radarr.monitor(movie_id)
-        radarr.search_movie(movie_id)
-        media_request.status = Request.STATUS_AUTO_APPROVED
-        media_request.held_reason = f"{user.user_type.title()} user - auto-approved"
-        db.session.commit()
-        logger.info(f"Fast auto-approved for {user.user_type}: {title}")
+    # Only create symlink for approved requests
+    if media_request.status not in (Request.STATUS_APPROVED, Request.STATUS_AUTO_APPROVED):
+        logger.debug(f"Request {media_request.id} status is {media_request.status}, not approved")
         return jsonify({
-            'status': 'auto_approve',
-            'request_id': media_request.id,
-            'reason': f'{user.user_type.title()} user - auto-approved',
-            'used_ai': False,
-        }), 200
+            'status': 'ok',
+            'symlink': False,
+            'reason': f'Request status is {media_request.status}'
+        })
 
-    # Check if certification is already known from Radarr
-    router = UserRouter()
-    radarr = RadarrClient()
-    certification = radarr.get_certification(movie_id)
-    used_ai = False
+    # Check if the user was a kid (only kids need symlinks for non-G/PG)
+    if media_request.user and media_request.user.user_type != 'kid':
+        logger.debug(f"Request by {media_request.user.username} is not a kid, skipping symlink")
+        return jsonify({
+            'status': 'ok',
+            'symlink': False,
+            'reason': f'Requester is {media_request.user.user_type}, not kid'
+        })
 
-    if certification:
-        # Use known certification for routing decision
-        logger.info(f"Using known certification for {title}: {certification}")
-        result = router.process_request_by_certification(media_request, certification)
+    # Create symlink for approved kid request
+    success = _create_symlink(folder_path, title)
 
-        # If held, get AI content summary so parents know WHAT content their child would see
-        if result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-            logger.info(f"Content held - fetching content data and AI summary for {title}")
-            try:
-                # Fetch detailed content info from Common Sense Media (only for held content)
-                content_info = fetch_content_data(title, media_type='movie', year=year)
-                content_data_str = None
-                if content_info.has_data():
-                    content_data_str = content_info.to_prompt_context()
-                    logger.info(f"Got CSM data for {title}: age={content_info.age_rating}")
-                else:
-                    logger.info(f"No CSM data found for {title}: {content_info.error}")
-
-                analyzer = get_analyzer()
-                # Use summarize_content (not analyze) - we have the rating, just need content details
-                analysis = analyzer.summarize_content(
-                    title=title,
-                    overview=overview,
-                    rating=certification,
-                    media_type='movie',
-                    year=year,
-                    content_data=content_data_str
-                )
-                # Update request with AI insights (keep official rating from TMDB)
-                media_request.ai_summary = analysis.summary
-                media_request.ai_concerns = analysis.concerns
-                media_request.ai_provider = f"tmdb+{analysis.provider}"
-                if content_info.has_data():
-                    media_request.ai_provider += "+csm"
-                media_request.ai_model = analysis.model
-                media_request.analysis_duration_ms = analysis.duration_ms
-                db.session.commit()
-                used_ai = True
-                logger.info(f"AI content summary for {title}: {analysis.summary[:100]}...")
-            except Exception as e:
-                logger.warning(f"AI content summary failed for {title}, using rating only: {e}")
+    if success:
+        logger.info(f"Created Kids Approved symlink for {title} (approved kid request)")
+        return jsonify({'status': 'ok', 'symlink': True, 'title': title})
     else:
-        # No certification available - fall back to AI analysis
-        logger.info(f"No certification for {title}, using AI analysis")
-        try:
-            analyzer = get_analyzer()
-            analysis = analyzer.analyze(title, overview, year)
-            logger.info(f"AI Analysis for {title}: {analysis.rating}")
-            used_ai = True
-        except Exception as e:
-            logger.error(f"Analysis failed for {title}: {e}")
-            media_request.status = Request.STATUS_ERROR
-            media_request.held_reason = f"Analysis error: {str(e)}"
-            db.session.commit()
-            return jsonify({'status': 'error', 'error': str(e)}), 500
+        return jsonify({'status': 'ok', 'symlink': False, 'reason': 'Symlink creation failed'})
 
-        result = router.process_request(media_request, analysis)
 
-    # Take action based on routing decision
-    if result.decision == RoutingDecision.AUTO_APPROVE:
-        # Ensure movie is monitored and trigger search
-        radarr.monitor(movie_id)
-        radarr.search_movie(movie_id)
-        logger.info(f"Auto-approved and searching: {title}")
+def _create_symlink(source_folder: str, title: str) -> bool:
+    """
+    Create a symlink from the source movie folder to kids-approved.
 
-    elif result.decision == RoutingDecision.HOLD_FOR_APPROVAL:
-        # Unmonitor to pause downloads
-        radarr.unmonitor(movie_id)
-        # Send notification
-        notifier = get_notifier()
-        notifier.notify_held(media_request)
-        logger.info(f"Held for approval: {title}")
+    Args:
+        source_folder: Full path to movie folder in /media/movies/
+        title: Movie title (for logging)
 
-    elif result.decision == RoutingDecision.BLOCK:
-        # Delete the movie
-        radarr.delete_movie(movie_id, delete_files=True, add_exclusion=True)
-        logger.info(f"Blocked and deleted: {title}")
+    Returns:
+        True if symlink created successfully
+    """
+    try:
+        source = Path(source_folder)
 
-    return jsonify({
-        'status': result.decision.value,
-        'request_id': media_request.id,
-        'rating': media_request.ai_rating,
-        'reason': result.reason,
-        'source': media_request.ai_provider,
-        'used_ai': used_ai,
-    }), 200
+        if not source.exists():
+            logger.error(f"Source folder does not exist: {source_folder}")
+            return False
+
+        # Create symlink with same folder name
+        link_name = source.name
+        link_path = Path(KIDS_APPROVED_MOVIES_PATH) / link_name
+
+        # Don't create if already exists
+        if link_path.exists() or link_path.is_symlink():
+            logger.info(f"Symlink already exists: {link_path}")
+            return True
+
+        # Create symlink
+        link_path.symlink_to(source)
+        logger.info(f"Created symlink: {link_path} -> {source}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to create symlink for {title}: {e}")
+        return False
+
+
+def cleanup_broken_symlinks() -> int:
+    """
+    Remove broken symlinks from kids-approved folder.
+
+    Returns:
+        Number of broken symlinks removed
+    """
+    kids_path = Path(KIDS_APPROVED_MOVIES_PATH)
+    removed = 0
+
+    if not kids_path.exists():
+        logger.warning(f"Kids approved path does not exist: {KIDS_APPROVED_MOVIES_PATH}")
+        return 0
+
+    for item in kids_path.iterdir():
+        if item.is_symlink() and not item.exists():
+            try:
+                item.unlink()
+                logger.info(f"Removed broken symlink: {item}")
+                removed += 1
+            except Exception as e:
+                logger.error(f"Failed to remove broken symlink {item}: {e}")
+
+    return removed
+
+
+@radarr_bp.route('/maintenance/cleanup-symlinks', methods=['POST'])
+def api_cleanup_symlinks():
+    """
+    API endpoint to clean up broken symlinks in kids-approved folder.
+    Can be called by cron or manually.
+    """
+    try:
+        removed = cleanup_broken_symlinks()
+        return jsonify({
+            'status': 'ok',
+            'removed': removed,
+            'message': f'Removed {removed} broken symlinks'
+        })
+    except Exception as e:
+        logger.error(f"Error during symlink cleanup: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500

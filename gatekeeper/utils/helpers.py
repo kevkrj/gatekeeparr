@@ -1,7 +1,6 @@
 """Utility helper functions"""
 
 import re
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -57,65 +56,3 @@ def sanitize_log(data: dict, sensitive_keys: list = None) -> dict:
     return sanitized
 
 
-def safe_json_loads(text: str, default=None):
-    """
-    Safely parse JSON, returning default on failure.
-
-    Args:
-        text: JSON string to parse
-        default: Default value if parsing fails
-
-    Returns:
-        Parsed JSON or default value
-    """
-    try:
-        return json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return default
-
-
-def truncate(text: str, max_length: int = 100, suffix: str = "...") -> str:
-    """
-    Truncate text to a maximum length.
-
-    Args:
-        text: Text to truncate
-        max_length: Maximum length including suffix
-        suffix: Suffix to append if truncated
-
-    Returns:
-        Truncated text
-    """
-    if not text or len(text) <= max_length:
-        return text or ""
-    return text[:max_length - len(suffix)] + suffix
-
-
-def normalize_rating(rating: str) -> str:
-    """
-    Normalize rating string to standard format.
-
-    Args:
-        rating: Rating string to normalize
-
-    Returns:
-        Normalized rating (uppercase, trimmed)
-    """
-    if not rating:
-        return "UNKNOWN"
-
-    rating = rating.strip().upper()
-
-    # Common normalizations
-    normalizations = {
-        'NR': 'UNKNOWN',
-        'NOT RATED': 'UNKNOWN',
-        'UNRATED': 'UNKNOWN',
-        'TV-Y7-FV': 'TV-Y7',
-        'TV-14-DV': 'TV-14',
-        'TV-14-LV': 'TV-14',
-        'TV-MA-LV': 'TV-MA',
-        'TV-MA-S': 'TV-MA',
-    }
-
-    return normalizations.get(rating, rating)

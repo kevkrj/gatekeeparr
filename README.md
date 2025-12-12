@@ -1,16 +1,26 @@
-# Gatekeeper
+# Gatekeeparr
 
-**Parental Content Scanner for the *arr Stack**
+**Parental content gating for the *arr stack**
 
-Gatekeeper is an open-source content filtering and approval system for home media servers. It integrates with Jellyseerr, Radarr, and Sonarr to automatically analyze content and route requests based on user type and content ratings.
+Gatekeeparr is an open-source content filtering and approval system for home media servers. It integrates with Jellyseerr, Radarr, and Sonarr to automatically analyze content and route requests based on user type and content ratings.
+
+## Why Gatekeeparr?
+
+Nothing else in the *arr ecosystem handles parental content filtering with nuance. Jellyseerr lets you block ratings globally, but that's all-or-nothing. Gatekeeparr gives you:
+
+- **Context, not just ratings** - A PG-13 superhero movie is different from a PG-13 war film
+- **AI-powered analysis** - Explains *why* content might be concerning, not just *that* it's rated PG-13
+- **Common Sense Media integration** - Real age recommendations (12+, 15+) and detailed content breakdowns
+- **Per-user routing** - Kids get reviewed, adults auto-approve
+- **Interactive approvals** - Approve/deny from your phone via Mattermost or Discord
 
 ## Features
 
 - **AI-Powered Content Analysis**: Uses LLMs to analyze content for parental concerns
   - Supports Claude (Anthropic), Ollama (local), OpenAI, and Grok
 - **User-Aware Routing**: Different rules for kids, teens, and adults
-  - Kids: Auto-approve G/PG, hold PG-13+
-  - Teens: Auto-approve up to PG-13, hold R+
+  - Kids: Auto-approve G/PG/TV-PG, hold PG-13/TV-14, block R/TV-MA
+  - Teens: Auto-approve up to PG-13/TV-14, hold R/TV-MA
   - Adults: Auto-approve everything
 - **Pluggable Notifications**: Mattermost, Discord, or any webhook
 - **Interactive Approvals**: Approve/Deny buttons in notifications
@@ -21,7 +31,7 @@ Gatekeeper is an open-source content filtering and approval system for home medi
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
-│   Jellyseerr    │────▶│   Gatekeeper    │
+│   Jellyseerr    │────▶│   Gatekeeparr    │
 │  (User Request) │     │   (Analysis)    │
 └─────────────────┘     └────────┬────────┘
                                  │
@@ -41,8 +51,8 @@ Gatekeeper is an open-source content filtering and approval system for home medi
          │                       │              │                 │
          ▼                       ▼              ▼                 ▼
     ┌─────────────────────────────────────────────────────────────────┐
-    │                      Radarr / Sonarr                            │
-    │              (monitor = true or false)                          │
+    │                       Jellyseerr                                │
+    │               (approve / decline API)                           │
     └─────────────────────────────────────────────────────────────────┘
                                                               │
                                                      ┌────────▼────────┐
@@ -71,7 +81,7 @@ This section documents the end-to-end flow of a media request through the entire
 │         │ webhook          │ webhook                              │          │
 │         ▼                  ▼                                      │          │
 │  ┌─────────────────────────────────────┐                         │          │
-│  │           GATEKEEPER :5000          │                         │          │
+│  │           GATEKEEPER :5023          │                         │          │
 │  │      (AI Content Analysis)          │                         │          │
 │  │                                     │                         │          │
 │  │  • Analyzes content via Claude API  │                         │          │
@@ -99,13 +109,13 @@ This section documents the end-to-end flow of a media request through the entire
 User visits Jellyseerr (e.g., requests.example.com)
   └─▶ Browses/searches for movie or TV show
   └─▶ Clicks "Request"
-  └─▶ Jellyseerr sends webhook to Gatekeeper
+  └─▶ Jellyseerr sends webhook to Gatekeeparr
   └─▶ Jellyseerr forwards request to Radarr/Sonarr
 ```
 
-#### 2. Content Analysis (Gatekeeper)
+#### 2. Content Analysis (Gatekeeparr)
 ```
-Gatekeeper receives Jellyseerr webhook
+Gatekeeparr receives Jellyseerr webhook
   └─▶ Identifies requesting user
   └─▶ Looks up user type (admin/adult/teen/kid)
   └─▶ Fetches content metadata from TMDB
@@ -113,23 +123,26 @@ Gatekeeper receives Jellyseerr webhook
   └─▶ AI returns: rating, concerns, recommendation
 ```
 
-#### 3. Routing Decision (Gatekeeper)
+#### 3. Routing Decision (Gatekeeparr)
 ```
 Based on user type + content rating:
 
 ADMIN or ADULT user:
   └─▶ Auto-approve → Radarr/Sonarr monitors & downloads
 
-KID user + G/PG content:
-  └─▶ Auto-approve → Radarr/Sonarr monitors & downloads
+KID user + G/PG/TV-PG content:
+  └─▶ Auto-approve in Jellyseerr → flows to Radarr/Sonarr → downloads
 
-KID user + PG-13+ content:
-  └─▶ HOLD → Disable monitoring in Radarr/Sonarr
+KID user + PG-13/TV-14 content:
+  └─▶ HOLD → Leave pending in Jellyseerr (kid sees "Pending")
+  └─▶ Run AI analysis with Common Sense Media data
   └─▶ Send Mattermost alert with Approve/Deny buttons
 
+KID user + R/TV-MA content:
+  └─▶ AUTO-DECLINE → Declined in Jellyseerr (kid sees "Declined")
+
 ANY user + NC-17/X content:
-  └─▶ AUTO-BLOCK → Delete from Radarr/Sonarr
-  └─▶ Notify user request was denied
+  └─▶ AUTO-BLOCK → Declined in Jellyseerr
 ```
 
 #### 4. Download & Availability
@@ -163,19 +176,19 @@ When content is held for review:
       └─────────────────────────────────────────────┘
 
   └─▶ Parent clicks Approve:
-      └─▶ Gatekeeper enables monitoring in Radarr/Sonarr
-      └─▶ Download begins
+      └─▶ Gatekeeparr calls Jellyseerr approve API
+      └─▶ Request flows to Radarr/Sonarr → download begins
       └─▶ Mattermost updated: "Approved by @dad"
 
   └─▶ Parent clicks Deny:
-      └─▶ Gatekeeper deletes from Radarr/Sonarr
-      └─▶ Any partial downloads removed
+      └─▶ Gatekeeparr calls Jellyseerr decline API
+      └─▶ Request marked declined (kid sees "Declined")
       └─▶ Mattermost updated: "Denied by @mom"
 ```
 
 ### Quality Controls (Radarr/Sonarr/Prowlarr)
 
-The pipeline includes automatic quality controls configured outside Gatekeeper:
+The pipeline includes automatic quality controls configured outside Gatekeeparr:
 
 | Setting | Value | Effect |
 |---------|-------|--------|
@@ -190,14 +203,14 @@ Jellyseerr blacklist tags prevent inappropriate content from appearing in browse
 
 **Recommended Blacklisted Tags:** `erotic`, `sexploitation`, `porn`, `pornographic`, `softcore`, `hardcore`, `adult film`, `sex`
 
-> **Note:** Search results are not filtered (TMDB API limitation). Gatekeeper catches any inappropriate requests.
+> **Note:** Search results are not filtered (TMDB API limitation). Gatekeeparr catches any inappropriate requests.
 
 ### Services & Ports
 
 | Service | Port | Purpose |
 |---------|------|---------|
 | Jellyseerr | 5055 | Media request UI |
-| Gatekeeper | 5000 | Content analysis & routing |
+| Gatekeeparr | 5023 | Content analysis & routing |
 | Radarr | 7878 | Movie management |
 | Sonarr | 8989 | TV show management |
 | Prowlarr | 9696 | Indexer aggregation |
@@ -223,41 +236,46 @@ docker-compose up -d
 
 ### 3. Configure Webhooks
 
-**Radarr**: Settings → Connect → Add → Webhook
-- URL: `http://gatekeeper:5000/webhook/radarr`
-- Events: Movie Added, On Download
+**Jellyseerr** (required - primary decision point):
+Settings → Notifications → Webhook
+- Webhook URL: `http://<gatekeeper-ip>:5023/webhook/jellyseerr`
+- Notification Types: Enable **Media Requested** (MEDIA_PENDING)
+- JSON Payload: Use default template
 
-**Sonarr**: Settings → Connect → Add → Webhook
-- URL: `http://gatekeeper:5000/webhook/sonarr`
-- Events: Series Added, On Download
+**Radarr** (for symlink creation after download):
+Settings → Connect → Add → Webhook
+- URL: `http://<gatekeeper-ip>:5023/webhook/radarr`
+- Events: On Import (Download)
 
-**Jellyseerr** (optional): Settings → Notifications → Webhook
-- URL: `http://gatekeeper:5000/webhook/jellyseerr`
+**Sonarr** (for symlink creation after download):
+Settings → Connect → Add → Webhook
+- URL: `http://<gatekeeper-ip>:5023/webhook/sonarr`
+- Events: On Import (Download)
 
 ### 4. Set Up Users
 
-Users must be configured in Gatekeeper to enable proper routing. The `jellyseerr_username` field maps Jellyseerr usernames to local Gatekeeper users.
+Users must be configured in Gatekeeparr to enable proper routing. The `jellyseerr_username` field maps Jellyseerr usernames to local Gatekeeparr users.
 
 **Via Docker CLI:**
 ```bash
 # Add admin user (maps to Jellyseerr username "admin")
-docker exec gatekeeper python /app/scripts/add_user.py kevin admin - admin
+docker exec gatekeeper python /app/scripts/add_user.py dad admin - admin
 
-# Add kids (maps to Jellyseerr username "Aubrey")
-docker exec gatekeeper python /app/scripts/add_user.py aubrey kid PG Aubrey
+# Add kid (maps to Jellyseerr username "tommy")
+docker exec gatekeeper python /app/scripts/add_user.py tommy kid PG tommy
 
 # Add teen
-docker exec gatekeeper python /app/scripts/add_user.py teen_user teen PG-13 TeenJellyseerr
+docker exec gatekeeper python /app/scripts/add_user.py teen_user teen PG-13 teen_jellyseerr
 
 # Add adult
-docker exec gatekeeper python /app/scripts/add_user.py spouse adult - SpouseJellyseerr
+docker exec gatekeeper python /app/scripts/add_user.py mom adult - mom
 ```
 
 **Via API:**
 ```bash
 curl -X POST http://localhost:5000/api/users \
   -H "Content-Type: application/json" \
-  -d '{"username": "kevin", "user_type": "admin", "jellyseerr_username": "admin"}'
+  -d '{"username": "dad", "user_type": "admin", "jellyseerr_username": "admin"}'
 ```
 
 **Important:** The `jellyseerr_username` must match exactly what Jellyseerr sends in webhooks (case-insensitive). Check your Jellyseerr user list to find the correct usernames.
@@ -349,23 +367,23 @@ AI_MODEL=grok-2-latest
 |------|--------------|-----------------|-------|
 | `admin` | Everything | Nothing | Nothing |
 | `adult` | Everything | Nothing* | NC-17/X |
-| `teen` | G, PG, PG-13 | R | NC-17/X |
-| `kid` | G, PG | PG-13, R | NC-17/X |
+| `teen` | G, PG, PG-13, TV-14 | R, TV-MA | NC-17/X |
+| `kid` | G, PG, TV-PG | PG-13, TV-14 | R, TV-MA, NC-17/X |
 
 *Adults with `requires_approval: true` follow the same rules as kids
 
 ## Rating Mappings
 
-### Movies
-- G, PG → Safe for kids
-- PG-13 → Requires review for kids
-- R → Requires review for kids and teens
+### Movies (for kids)
+- G, PG → Auto-approve
+- PG-13 → Hold for review (AI analysis)
+- R → Auto-block
 - NC-17, X → Always blocked
 
-### TV
-- TV-Y, TV-Y7, TV-G, TV-PG → Safe for kids
-- TV-14 → Requires review for kids
-- TV-MA → Requires review for kids and teens
+### TV (for kids)
+- TV-Y, TV-Y7, TV-G, TV-PG → Auto-approve
+- TV-14 → Hold for review (AI analysis)
+- TV-MA → Auto-block
 
 ## Development
 
@@ -400,11 +418,11 @@ pytest tests/test_analyzer.py
 - [x] User-based routing
 - [x] Mattermost notifications
 - [x] Request tracking
+- [x] Kids libraries (symlink-based Kids Movies + Kids TV)
+- [ ] ntfy.sh mobile notifications
 - [ ] Admin panel UI
 - [ ] Jellyseerr SSO
-- [ ] Discord bot (interactive buttons)
-- [ ] Quota management
-- [ ] Email notifications
+- [ ] First-run setup scripts (for open source release)
 
 ## Contributing
 
@@ -419,7 +437,7 @@ MIT License - feel free to use in your own projects.
 
 ## Credits
 
-Built for the Jones Family media server.
+Built for families who want smarter parental controls.
 
 Inspired by:
 - [Pulsarr](https://github.com/jamcalli/Pulsarr) - Approval workflow patterns

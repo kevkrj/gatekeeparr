@@ -9,8 +9,9 @@ Sources:
 - Future: IMDb Parental Guide, Kids-In-Mind, etc.
 """
 
-import re
+import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 from urllib.parse import quote
@@ -145,7 +146,6 @@ class CommonSenseMediaFetcher:
 
     def _parse_response(self, html: str) -> ContentInfo:
         """Parse CSM HTML response to extract content info"""
-        import json
         soup = BeautifulSoup(html, 'html.parser')
         info = ContentInfo(source="Common Sense Media")
 

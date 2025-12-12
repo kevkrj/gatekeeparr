@@ -78,8 +78,9 @@ class User(db.Model, TimestampMixin):
 
         if not self.max_rating:
             # No max rating set, use defaults based on user type
+            # Kids auto-approve up to TV-PG, hold PG-13/TV-14, block R/TV-MA
             if self.is_kid():
-                max_allowed = 'PG'
+                max_allowed = 'TV-PG'
             elif self.is_teen():
                 max_allowed = 'PG-13'
             else:

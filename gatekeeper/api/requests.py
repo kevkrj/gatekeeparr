@@ -85,10 +85,8 @@ def get_request(request_id):
 
 @requests_bp.route('/<int:request_id>/approve', methods=['POST'])
 def approve_request(request_id):
-    """Approve a held request."""
-    from gatekeeper.services.radarr import RadarrClient
-    from gatekeeper.services.sonarr import SonarrClient
-    from gatekeeper.config import get_config
+    """Approve a held request via Jellyseerr API."""
+    from gatekeeper.services.jellyseerr import JellyseerrClient
 
     req = Request.query.get_or_404(request_id)
 
@@ -100,19 +98,16 @@ def approve_request(request_id):
     notes = data.get('notes', '')
     decided_by = data.get('decided_by', 'admin_panel')
 
-    # Enable monitoring and trigger search in *arr
-    config = get_config()
+    # Approve in Jellyseerr
+    if not req.jellyseerr_request_id:
+        return jsonify({'error': 'No Jellyseerr request ID'}), 400
+
     try:
-        if req.media_type == 'movie' and req.media_id:
-            client = RadarrClient(config.radarr.url, config.radarr.api_key)
-            client.monitor(req.media_id)
-            client.search_movie(req.media_id)
-        elif req.media_type == 'series' and req.media_id:
-            client = SonarrClient(config.sonarr.url, config.sonarr.api_key)
-            client.monitor(req.media_id)
-            client.search_series(req.media_id)
+        jellyseerr = JellyseerrClient()
+        if not jellyseerr.approve_request(req.jellyseerr_request_id):
+            return jsonify({'error': 'Failed to approve in Jellyseerr'}), 500
     except Exception as e:
-        return jsonify({'error': f'Failed to enable monitoring: {str(e)}'}), 500
+        return jsonify({'error': f'Jellyseerr error: {str(e)}'}), 500
 
     # Update request status
     req.status = Request.STATUS_APPROVED
@@ -137,10 +132,8 @@ def approve_request(request_id):
 
 @requests_bp.route('/<int:request_id>/deny', methods=['POST'])
 def deny_request(request_id):
-    """Deny a held request."""
-    from gatekeeper.services.radarr import RadarrClient
-    from gatekeeper.services.sonarr import SonarrClient
-    from gatekeeper.config import get_config
+    """Deny a held request via Jellyseerr API."""
+    from gatekeeper.services.jellyseerr import JellyseerrClient
 
     req = Request.query.get_or_404(request_id)
 
@@ -152,18 +145,16 @@ def deny_request(request_id):
     notes = data.get('notes', '')
     decided_by = data.get('decided_by', 'admin_panel')
 
-    # Delete from *arr
-    config = get_config()
+    # Decline in Jellyseerr
+    if not req.jellyseerr_request_id:
+        return jsonify({'error': 'No Jellyseerr request ID'}), 400
+
     try:
-        if req.media_type == 'movie' and req.media_id:
-            client = RadarrClient(config.radarr.url, config.radarr.api_key)
-            client.delete_movie(req.media_id, delete_files=True, add_exclusion=True)
-        elif req.media_type == 'series' and req.media_id:
-            client = SonarrClient(config.sonarr.url, config.sonarr.api_key)
-            client.delete_series(req.media_id, delete_files=True, add_exclusion=True)
+        jellyseerr = JellyseerrClient()
+        if not jellyseerr.decline_request(req.jellyseerr_request_id):
+            return jsonify({'error': 'Failed to decline in Jellyseerr'}), 500
     except Exception as e:
-        # Log but continue - content may already be deleted
-        print(f"Warning: Failed to delete from *arr: {e}")
+        return jsonify({'error': f'Jellyseerr error: {str(e)}'}), 500
 
     # Update request status
     req.status = Request.STATUS_DENIED
