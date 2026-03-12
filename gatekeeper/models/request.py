@@ -32,7 +32,7 @@ class Request(db.Model, TimestampMixin):
     requested_at = db.Column(db.DateTime)
 
     # AI Analysis results
-    ai_rating = db.Column(db.String(20))  # Claude's determined rating
+    ai_rating = db.Column(db.String(20))  # AI's determined rating
     ai_summary = db.Column(db.Text)
     _ai_concerns = db.Column('ai_concerns', db.Text)  # JSON array stored as text
     analyzed_at = db.Column(db.DateTime)
