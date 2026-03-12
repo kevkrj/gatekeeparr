@@ -2,7 +2,7 @@
 
 **Parental content gating for the *arr stack**
 
-Gatekeeparr is an open-source content filtering and approval system for home media servers. It integrates with **Jellyseerr, Seerr, Radarr, and Sonarr** to automatically analyze content and route requests based on user type and content ratings.
+Gatekeeparr is an open-source content filtering and approval system for home media servers. It integrates with **Jellyseerr/Seerr, Radarr, and Sonarr** to automatically analyze content and route requests based on user type and content ratings.
 
 Works with **Jellyfin, Plex, and Emby** — any media server supported by Jellyseerr or Seerr.
 
@@ -10,30 +10,34 @@ Works with **Jellyfin, Plex, and Emby** — any media server supported by Jellys
 
 Nothing else in the *arr ecosystem handles parental content filtering with nuance. Jellyseerr lets you block ratings globally, but that's all-or-nothing. Gatekeeparr gives you:
 
-- **Context, not just ratings** - A PG-13 superhero movie is different from a PG-13 war film
-- **AI-powered analysis** - Explains *why* content might be concerning, not just *that* it's rated PG-13
-- **Common Sense Media integration** - Real age recommendations (12+, 15+) and detailed content breakdowns
-- **Per-user routing** - Kids get reviewed, adults auto-approve
-- **Interactive approvals** - Approve/deny from your phone via Mattermost or Discord
+- **Context, not just ratings** — A PG-13 superhero movie is different from a PG-13 war film
+- **AI-powered analysis** — Explains *why* content might be concerning, not just *that* it's rated PG-13
+- **Common Sense Media integration** — Real age recommendations and detailed content breakdowns
+- **Per-user routing** — Kids get reviewed, adults auto-approve
+- **Three-tier rating control** — Configure auto-approve, needs-approval, and auto-deny ceilings per user
+- **Interactive approvals** — Approve/deny from your phone via Mattermost or Discord
 
 ## Features
 
 - **AI-Powered Content Analysis**: Uses LLMs to analyze content for parental concerns
   - Supports Claude (Anthropic), Ollama (local), OpenAI, and Grok
+- **Three-Tier Rating System**: Per-user configurable thresholds
+  - Auto-approve up to a rating (e.g., PG)
+  - Hold for approval up to a rating (e.g., R)
+  - Auto-deny above the approval ceiling
 - **User-Aware Routing**: Different rules for kids, teens, and adults
-  - Kids: Auto-approve G/PG/TV-PG, hold PG-13/TV-14, block R/TV-MA
-  - Teens: Auto-approve up to PG-13/TV-14, hold R/TV-MA
-  - Adults: Auto-approve everything
 - **Pluggable Notifications**: Mattermost, Discord, or any webhook
 - **Interactive Approvals**: Approve/Deny buttons in notifications
-- **Request Tracking**: Full audit trail of all requests and decisions
-- **Blocked Content**: Automatically block NC-17/X-rated content
+- **Admin Panel**: Web UI for managing users, requests, and approvals
+- **Request Sync**: Automatically cleans up stale requests when content is removed from Seerr
+- **Jellyfin Authentication**: Log in with your Jellyfin account (via Seerr)
+- **Setup Wizard**: First-run configuration through the browser
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
-│ Jellyseerr/Seerr│────▶│   Gatekeeparr    │
+│ Jellyseerr/Seerr│────▶│   Gatekeeparr   │
 │  (User Request) │     │   (Analysis)    │
 └─────────────────┘     └────────┬────────┘
                                  │
@@ -42,183 +46,57 @@ Nothing else in the *arr ecosystem handles parental content filtering with nuanc
     ┌────▼────┐            ┌─────▼─────┐           ┌─────▼─────┐
     │  Admin  │            │   Adult   │           │   Kid     │
     │ Auto ✓  │            │  Auto ✓   │           │  Analyze  │
-    └────┬────┘            └─────┬─────┘           └─────┬─────┘
-         │                       │                       │
-         │                       │              ┌────────┴────────┐
-         │                       │              │                 │
-         │                       │         ┌────▼────┐      ┌─────▼─────┐
-         │                       │         │  G/PG   │      │  PG-13+   │
-         │                       │         │ Auto ✓  │      │   HOLD    │
-         │                       │         └────┬────┘      └─────┬─────┘
-         │                       │              │                 │
-         ▼                       ▼              ▼                 ▼
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                   Jellyseerr / Seerr                            │
-    │               (approve / decline API)                           │
-    └─────────────────────────────────────────────────────────────────┘
-                                                              │
-                                                     ┌────────▼────────┐
-                                                     │   Mattermost    │
-                                                     │  Approve / Deny │
-                                                     └─────────────────┘
+    └─────────┘            └───────────┘           └─────┬─────┘
+                                                         │
+                                                ┌────────┴────────┐
+                                                │                 │
+                                          ┌─────▼─────┐    ┌─────▼─────┐
+                                          │ ≤ Max Auto │    │ > Max Auto│
+                                          │  Approve ✓ │    │           │
+                                          └───────────┘    └─────┬─────┘
+                                                                 │
+                                                        ┌────────┴────────┐
+                                                        │                 │
+                                                  ┌─────▼─────┐    ┌─────▼─────┐
+                                                  │ ≤ Approval │    │ > Approval│
+                                                  │  Ceiling   │    │  Ceiling  │
+                                                  │   HOLD ⏳   │    │ AUTO-DENY │
+                                                  └───────────┘    └───────────┘
 ```
 
-## Complete Pipeline Flow
+### Request Flow
 
-This section documents the end-to-end flow of a media request through the entire stack.
+1. **User requests** content in Jellyseerr/Seerr
+2. **Webhook fires** to Gatekeeparr with request details
+3. **Gatekeeparr identifies** the user and looks up their rating thresholds
+4. **TMDB rating** is fetched for the content
+5. **Routing decision**:
+   - Rating at or below **auto-approve ceiling** → approved in Seerr
+   - Rating above auto-approve but at or below **approval ceiling** → held, AI analysis runs, parent notified
+   - Rating above **approval ceiling** → auto-denied in Seerr
+6. **Parent approves/denies** via Mattermost, Discord, or the admin panel
+7. **Seerr forwards** approved requests to Radarr/Sonarr for download
 
-### Infrastructure Overview
+### Approval Notifications
+
+When content is held for review, the parent receives a notification:
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           MEDIA REQUEST PIPELINE                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌──────────────┐  │
-│  │Jellyseerr/  │───▶│   Radarr/   │───▶│  Prowlarr   │───▶│ Transmission │  │
-│  │ Seerr :5055 │    │   Sonarr    │    │   :9696     │    │    :9091     │  │
-│  │             │    │ :7878/:8989 │    │  (Indexers) │    │  (VPN: PIA)  │  │
-│  └──────┬──────┘    └──────┬──────┘    └─────────────┘    └──────┬───────┘  │
-│         │                  │                                      │          │
-│         │ webhook          │ webhook                              │          │
-│         ▼                  ▼                                      │          │
-│  ┌─────────────────────────────────────┐                         │          │
-│  │           GATEKEEPER :5023          │                         │          │
-│  │      (AI Content Analysis)          │                         │          │
-│  │                                     │                         │          │
-│  │  • Analyzes content via Claude API  │                         │          │
-│  │  • Routes based on user type        │                         │          │
-│  │  • Sends Mattermost notifications   │                         │          │
-│  └──────────────┬──────────────────────┘                         │          │
-│                 │                                                 │          │
-│                 │ approve/deny                                    │          │
-│                 ▼                                                 ▼          │
-│  ┌─────────────────────────────┐              ┌─────────────────────────┐   │
-│  │       Mattermost :8065      │              │     Jellyfin :8096      │   │
-│  │  (Approve/Deny Buttons)     │              │    (Media Playback)     │   │
-│  │                             │              │                         │   │
-│  │  Parent receives alert ────────────────────▶ Content available      │   │
-│  │  clicks Approve/Deny        │              │                         │   │
-│  └─────────────────────────────┘              └─────────────────────────┘   │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ 🎬 Content Request Held                     │
+│                                             │
+│ Movie: Deadpool & Wolverine (2024)          │
+│ Rating: R                                   │
+│ Requested by: child1                        │
+│                                             │
+│ AI Analysis:                                │
+│ • Strong violence and gore                  │
+│ • Pervasive language                        │
+│ • Adult humor throughout                    │
+│                                             │
+│ [  Approve  ]  [  Deny  ]                   │
+└─────────────────────────────────────────────┘
 ```
-
-### Step-by-Step Flow
-
-#### 1. User Makes Request (Jellyseerr)
-```
-User visits Jellyseerr/Seerr (e.g., requests.example.com)
-  └─▶ Browses/searches for movie or TV show
-  └─▶ Clicks "Request"
-  └─▶ Jellyseerr/Seerr sends webhook to Gatekeeparr
-  └─▶ Jellyseerr/Seerr forwards request to Radarr/Sonarr
-```
-
-#### 2. Content Analysis (Gatekeeparr)
-```
-Gatekeeparr receives Jellyseerr/Seerr webhook
-  └─▶ Identifies requesting user
-  └─▶ Looks up user type (admin/adult/teen/kid)
-  └─▶ Fetches content metadata from TMDB
-  └─▶ Sends to AI for parental content analysis
-  └─▶ AI returns: rating, concerns, recommendation
-```
-
-#### 3. Routing Decision (Gatekeeparr)
-```
-Based on user type + content rating:
-
-ADMIN or ADULT user:
-  └─▶ Auto-approve → Radarr/Sonarr monitors & downloads
-
-KID user + G/PG/TV-PG content:
-  └─▶ Auto-approve in Jellyseerr → flows to Radarr/Sonarr → downloads
-
-KID user + PG-13/TV-14 content:
-  └─▶ HOLD → Leave pending in Jellyseerr (kid sees "Pending")
-  └─▶ Run AI analysis with Common Sense Media data
-  └─▶ Send Mattermost alert with Approve/Deny buttons
-
-KID user + R/TV-MA content:
-  └─▶ AUTO-DECLINE → Declined in Jellyseerr (kid sees "Declined")
-
-ANY user + NC-17/X content:
-  └─▶ AUTO-BLOCK → Declined in Jellyseerr
-```
-
-#### 4. Download & Availability
-```
-If approved/auto-approved:
-  └─▶ Radarr/Sonarr searches via Prowlarr
-  └─▶ Prowlarr queries indexers (TPB, YTS, etc.)
-  └─▶ Best match sent to Transmission (VPN-protected)
-  └─▶ Download completes
-  └─▶ Radarr/Sonarr imports to media library
-  └─▶ Jellyfin scans and makes available
-```
-
-#### 5. Parent Approval Flow (Mattermost)
-```
-When content is held for review:
-  └─▶ Parent receives Mattermost notification:
-      ┌─────────────────────────────────────────────┐
-      │ 🎬 Content Request Held                     │
-      │                                             │
-      │ Movie: Deadpool & Wolverine (2024)          │
-      │ Rating: R                                   │
-      │ Requested by: child1                         │
-      │                                             │
-      │ AI Analysis:                                │
-      │ • Strong violence and gore                  │
-      │ • Pervasive language                        │
-      │ • Adult humor throughout                    │
-      │                                             │
-      │ [  Approve  ]  [  Deny  ]                   │
-      └─────────────────────────────────────────────┘
-
-  └─▶ Parent clicks Approve:
-      └─▶ Gatekeeparr calls Jellyseerr approve API
-      └─▶ Request flows to Radarr/Sonarr → download begins
-      └─▶ Mattermost updated: "Approved by @parent"
-
-  └─▶ Parent clicks Deny:
-      └─▶ Gatekeeparr calls Jellyseerr decline API
-      └─▶ Request marked declined (kid sees "Declined")
-      └─▶ Mattermost updated: "Denied by @parent"
-```
-
-### Quality Controls (Radarr/Sonarr/Prowlarr)
-
-The pipeline includes automatic quality controls configured outside Gatekeeparr:
-
-| Setting | Value | Effect |
-|---------|-------|--------|
-| Minimum Seeders | 5 | Only grab well-seeded torrents |
-| Max Size (1080p WEB) | ~8 GB/hr | ~16GB max for 2hr movie |
-| Max Size (1080p Bluray) | ~12 GB/hr | ~24GB max for 2hr movie |
-| Remux/4K | Disabled | Prevents 30-80GB downloads |
-
-### Content Pre-Filtering (Jellyseerr)
-
-Jellyseerr/Seerr blacklist tags prevent inappropriate content from appearing in browse/discover:
-
-**Recommended Blacklisted Tags:** `erotic`, `sexploitation`, `porn`, `pornographic`, `softcore`, `hardcore`, `adult film`, `sex`
-
-> **Note:** Search results are not filtered (TMDB API limitation). Gatekeeparr catches any inappropriate requests.
-
-### Services & Ports
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| Jellyseerr/Seerr | 5055 | Media request UI |
-| Gatekeeparr | 5023 | Content analysis & routing |
-| Radarr | 7878 | Movie management |
-| Sonarr | 8989 | TV show management |
-| Prowlarr | 9696 | Indexer aggregation |
-| Transmission | 9091 | Torrent downloads (VPN) |
-| Jellyfin | 8096 | Media playback |
-| Mattermost | 8065 | Notifications & approvals |
 
 ## Quick Start
 
@@ -233,56 +111,50 @@ cp .env.example .env
 ### 2. Deploy with Docker
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 3. Configure Webhooks
 
-**Jellyseerr or Seerr** (required - primary decision point):
+**Jellyseerr or Seerr** (required):
 Settings → Notifications → Webhook
-- Webhook URL: `http://<gatekeeper-ip>:5023/webhook/jellyseerr` (or `/webhook/seerr`)
+- Webhook URL: `http://<gatekeeparr-ip>:5023/webhook/jellyseerr` (or `/webhook/seerr`)
 - Notification Types: Enable **Media Requested** (MEDIA_PENDING)
 - JSON Payload: Use default template
 
 > **Note:** Seerr is the successor to Jellyseerr and Overseerr, supporting Jellyfin, Plex, and Emby. Gatekeeparr works with both — just point `JELLYSEERR_URL` at whichever you run.
 
-**Radarr** (for symlink creation after download):
+**Radarr** (optional — for kids library symlinks):
 Settings → Connect → Add → Webhook
-- URL: `http://<gatekeeper-ip>:5023/webhook/radarr`
+- URL: `http://<gatekeeparr-ip>:5023/webhook/radarr`
 - Events: On Import (Download)
 
-**Sonarr** (for symlink creation after download):
+**Sonarr** (optional — for kids library symlinks):
 Settings → Connect → Add → Webhook
-- URL: `http://<gatekeeper-ip>:5023/webhook/sonarr`
+- URL: `http://<gatekeeparr-ip>:5023/webhook/sonarr`
 - Events: On Import (Download)
 
 ### 4. Set Up Users
 
-Users must be configured in Gatekeeparr to enable proper routing. The `jellyseerr_username` field maps Jellyseerr/Seerr usernames to local Gatekeeparr users.
+Visit the admin panel at `http://<gatekeeparr-ip>:5023/admin` and log in with your Jellyfin or Seerr credentials.
 
-**Via Docker CLI:**
+Users can be managed through the admin panel UI, or via CLI:
+
 ```bash
-# Add admin user (maps to Jellyseerr username "admin")
+# Add admin user
 docker exec gatekeeper python /app/scripts/add_user.py parent admin - admin
 
-# Add kid (maps to Jellyseerr username "child1")
+# Add kid (auto-approve up to PG)
 docker exec gatekeeper python /app/scripts/add_user.py child1 kid PG child1
 
-# Add teen
-docker exec gatekeeper python /app/scripts/add_user.py teen1 teen PG-13 teen1_jellyseerr
+# Add teen (auto-approve up to PG-13)
+docker exec gatekeeper python /app/scripts/add_user.py teen1 teen PG-13 teen1
 
 # Add adult
 docker exec gatekeeper python /app/scripts/add_user.py adult1 adult - adult1
 ```
 
-**Via API:**
-```bash
-curl -X POST http://localhost:5000/api/users \
-  -H "Content-Type: application/json" \
-  -d '{"username": "parent", "user_type": "admin", "jellyseerr_username": "admin"}'
-```
-
-**Important:** The `jellyseerr_username` must match exactly what Jellyseerr sends in webhooks (case-insensitive). Check your Jellyseerr user list to find the correct usernames.
+**Important:** The username must match what Jellyseerr/Seerr sends in webhooks (case-insensitive).
 
 ## Configuration
 
@@ -290,7 +162,9 @@ curl -X POST http://localhost:5000/api/users \
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AI_PROVIDER` | AI backend: claude, ollama, openai, grok | `claude` |
+| `GATEKEEPER_SECRET_KEY` | Session secret (change in production!) | `change-me-in-production` |
+| `GATEKEEPER_URL` | External URL for notification callbacks | `http://localhost:5000` |
+| `AI_PROVIDER` | AI backend: `claude`, `ollama`, `openai`, `grok` | `claude` |
 | `AI_API_KEY` | API key for AI provider | required |
 | `AI_MODEL` | Override default model | provider default |
 | `AI_BASE_URL` | Custom API URL (for Ollama) | provider default |
@@ -300,9 +174,10 @@ curl -X POST http://localhost:5000/api/users \
 | `RADARR_API_KEY` | Radarr API key | required |
 | `SONARR_URL` | Sonarr base URL | `http://localhost:8989` |
 | `SONARR_API_KEY` | Sonarr API key | required |
-| `MATTERMOST_WEBHOOK` | Mattermost incoming webhook | optional |
+| `TMDB_API_KEY` | TMDB API key (for rating lookups) | optional |
+| `WEBHOOK_SECRET` | Shared secret for webhook authentication | optional |
+| `MATTERMOST_WEBHOOK` | Mattermost incoming webhook URL | optional |
 | `DISCORD_WEBHOOK` | Discord webhook URL | optional |
-| `GATEKEEPER_URL` | External URL for callbacks | `http://localhost:5000` |
 
 ### AI Providers
 
@@ -334,17 +209,53 @@ AI_API_KEY=xxx
 AI_MODEL=grok-2-latest
 ```
 
+## User Types & Rating Tiers
+
+Each user has three configurable rating thresholds:
+
+| Setting | Description |
+|---------|-------------|
+| **Auto-Approve** | Requests at or below this rating are approved automatically |
+| **Approval Ceiling** | Requests above auto-approve but at or below this are held for parent review |
+| **Auto-Deny** | Anything above the approval ceiling is automatically denied |
+
+### Default Thresholds
+
+| Type | Auto-Approve | Approval Ceiling | Auto-Deny |
+|------|--------------|------------------|-----------|
+| `admin` | No limit | — | — |
+| `adult` | No limit | — | NC-17/X |
+| `teen` | PG-13 / TV-14 | R / TV-MA | NC-17/X |
+| `kid` | PG / TV-PG | PG-13 / TV-14 | R+ |
+
+All thresholds are configurable per-user through the admin panel.
+
 ## API Endpoints
 
 ### Webhooks
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /webhook/radarr` | Radarr webhook handler |
-| `POST /webhook/sonarr` | Sonarr webhook handler |
 | `POST /webhook/jellyseerr` | Jellyseerr/Seerr webhook handler |
-| `POST /webhook/seerr` | Alias for above (same handler) |
+| `POST /webhook/seerr` | Alias for above |
+| `POST /webhook/radarr` | Radarr download webhook (kids library symlinks) |
+| `POST /webhook/sonarr` | Sonarr download webhook (kids library symlinks) |
 | `POST /action` | Notification button callback |
+
+### Admin API (requires authentication)
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/requests` | List all requests (filterable) |
+| `GET /api/requests/:id` | Get request details |
+| `POST /api/requests/:id/approve` | Approve a held request |
+| `POST /api/requests/:id/deny` | Deny a held request |
+| `POST /api/requests/sync` | Sync requests with Seerr |
+| `GET /api/users` | List users |
+| `PUT /api/users/:id` | Update user settings |
+| `POST /api/users/sync` | Sync users from Seerr |
+| `GET /api/stats` | Dashboard statistics |
+| `GET /api/approvals` | Approval history |
 
 ### Utility
 
@@ -354,45 +265,7 @@ AI_MODEL=grok-2-latest
 | `GET /test` | Test AI integration |
 | `GET /test/connections` | Test all service connections |
 
-### API
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/requests` | List all requests |
-| `GET /api/requests/:id` | Get request details |
-| `POST /api/requests/:id/approve` | Approve request |
-| `POST /api/requests/:id/deny` | Deny request |
-| `GET /api/users` | List users |
-| `PUT /api/users/:id` | Update user settings |
-| `GET /api/stats` | Dashboard statistics |
-
-## User Types
-
-| Type | Auto-Approve | Hold For Review | Block |
-|------|--------------|-----------------|-------|
-| `admin` | Everything | Nothing | Nothing |
-| `adult` | Everything | Nothing* | NC-17/X |
-| `teen` | G, PG, PG-13, TV-14 | R, TV-MA | NC-17/X |
-| `kid` | G, PG, TV-PG | PG-13, TV-14 | R, TV-MA, NC-17/X |
-
-*Adults with `requires_approval: true` follow the same rules as kids
-
-## Rating Mappings
-
-### Movies (for kids)
-- G, PG → Auto-approve
-- PG-13 → Hold for review (AI analysis)
-- R → Auto-block
-- NC-17, X → Always blocked
-
-### TV (for kids)
-- TV-Y, TV-Y7, TV-G, TV-PG → Auto-approve
-- TV-14 → Hold for review (AI analysis)
-- TV-MA → Auto-block
-
 ## Development
-
-### Local Setup
 
 ```bash
 # Create virtual environment
@@ -406,34 +279,27 @@ pip install -r requirements.txt
 python -m gatekeeper.app
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and guidelines.
+
 ## Roadmap
 
-- [x] Core webhook handlers
-- [x] AI content analysis
-- [x] User-based routing
-- [x] Mattermost notifications
-- [x] Request tracking
-- [x] Kids libraries (symlink-based Kids Movies + Kids TV)
-- [ ] ntfy.sh mobile notifications
-- [x] Admin panel UI
-- [x] Jellyseerr SSO (login via Jellyseerr credentials)
+- [x] Core webhook handlers (Jellyseerr/Seerr, Radarr, Sonarr)
+- [x] AI content analysis (Claude, Ollama, OpenAI, Grok)
+- [x] User-based routing with configurable thresholds
+- [x] Three-tier rating system (auto-approve / needs-approval / auto-deny)
+- [x] Mattermost & Discord notifications with approve/deny buttons
+- [x] Request tracking and audit trail
+- [x] Kids libraries (symlink-based)
+- [x] Admin panel UI with dashboard
+- [x] Jellyfin / Seerr authentication
 - [x] First-run setup wizard
+- [x] Request sync with Seerr (cleanup stale requests)
+- [ ] ntfy.sh mobile push notifications
 
 ## Contributing
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - feel free to use in your own projects.
-
-## Credits
-
-Built for families who want smarter parental controls.
-
-Inspired by:
-- [Pulsarr](https://github.com/jamcalli/Pulsarr) - Approval workflow patterns
-- [rarrnomore](https://github.com/Schaka/rarrnomore) - Webhook interception patterns
+MIT License — see [LICENSE](LICENSE).
