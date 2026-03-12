@@ -1,9 +1,9 @@
 """
 Authentication module for Gatekeeper admin panel.
 
-Authenticates users against Jellyseerr's local auth endpoint and manages
-Flask sessions. Only Jellyseerr admins get full access; non-admins get
-read-only dashboard access.
+Authenticates users against Jellyseerr/Seerr's local auth endpoint and manages
+Flask sessions. Only admins get full access; non-admins get read-only dashboard
+access.
 """
 
 import functools

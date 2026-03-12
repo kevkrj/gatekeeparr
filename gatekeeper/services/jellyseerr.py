@@ -1,10 +1,13 @@
 """
-Jellyseerr API Client
+Jellyseerr / Seerr API Client
 
-Handles communication with Jellyseerr for:
+Handles communication with Jellyseerr or Seerr for:
 - User information lookup
 - Request approval/decline
 - Connection testing
+
+Seerr maintains the same /api/v1 endpoints as Jellyseerr, so this client
+works with either. Configure JELLYSEERR_URL to point to whichever you use.
 """
 
 import logging

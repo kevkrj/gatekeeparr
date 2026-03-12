@@ -2,7 +2,9 @@
 
 **Parental content gating for the *arr stack**
 
-Gatekeeparr is an open-source content filtering and approval system for home media servers. It integrates with Jellyseerr, Radarr, and Sonarr to automatically analyze content and route requests based on user type and content ratings.
+Gatekeeparr is an open-source content filtering and approval system for home media servers. It integrates with **Jellyseerr, Seerr, Radarr, and Sonarr** to automatically analyze content and route requests based on user type and content ratings.
+
+Works with **Jellyfin, Plex, and Emby** — any media server supported by Jellyseerr or Seerr.
 
 ## Why Gatekeeparr?
 
@@ -31,7 +33,7 @@ Nothing else in the *arr ecosystem handles parental content filtering with nuanc
 
 ```
 ┌─────────────────┐     ┌─────────────────┐
-│   Jellyseerr    │────▶│   Gatekeeparr    │
+│ Jellyseerr/Seerr│────▶│   Gatekeeparr    │
 │  (User Request) │     │   (Analysis)    │
 └─────────────────┘     └────────┬────────┘
                                  │
@@ -51,7 +53,7 @@ Nothing else in the *arr ecosystem handles parental content filtering with nuanc
          │                       │              │                 │
          ▼                       ▼              ▼                 ▼
     ┌─────────────────────────────────────────────────────────────────┐
-    │                       Jellyseerr                                │
+    │                   Jellyseerr / Seerr                            │
     │               (approve / decline API)                           │
     └─────────────────────────────────────────────────────────────────┘
                                                               │
@@ -73,8 +75,8 @@ This section documents the end-to-end flow of a media request through the entire
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌──────────────┐  │
-│  │ Jellyseerr  │───▶│   Radarr/   │───▶│  Prowlarr   │───▶│ Transmission │  │
-│  │   :5055     │    │   Sonarr    │    │   :9696     │    │    :9091     │  │
+│  │Jellyseerr/  │───▶│   Radarr/   │───▶│  Prowlarr   │───▶│ Transmission │  │
+│  │ Seerr :5055 │    │   Sonarr    │    │   :9696     │    │    :9091     │  │
 │  │             │    │ :7878/:8989 │    │  (Indexers) │    │  (VPN: PIA)  │  │
 │  └──────┬──────┘    └──────┬──────┘    └─────────────┘    └──────┬───────┘  │
 │         │                  │                                      │          │
@@ -106,16 +108,16 @@ This section documents the end-to-end flow of a media request through the entire
 
 #### 1. User Makes Request (Jellyseerr)
 ```
-User visits Jellyseerr (e.g., requests.example.com)
+User visits Jellyseerr/Seerr (e.g., requests.example.com)
   └─▶ Browses/searches for movie or TV show
   └─▶ Clicks "Request"
-  └─▶ Jellyseerr sends webhook to Gatekeeparr
-  └─▶ Jellyseerr forwards request to Radarr/Sonarr
+  └─▶ Jellyseerr/Seerr sends webhook to Gatekeeparr
+  └─▶ Jellyseerr/Seerr forwards request to Radarr/Sonarr
 ```
 
 #### 2. Content Analysis (Gatekeeparr)
 ```
-Gatekeeparr receives Jellyseerr webhook
+Gatekeeparr receives Jellyseerr/Seerr webhook
   └─▶ Identifies requesting user
   └─▶ Looks up user type (admin/adult/teen/kid)
   └─▶ Fetches content metadata from TMDB
@@ -199,7 +201,7 @@ The pipeline includes automatic quality controls configured outside Gatekeeparr:
 
 ### Content Pre-Filtering (Jellyseerr)
 
-Jellyseerr blacklist tags prevent inappropriate content from appearing in browse/discover:
+Jellyseerr/Seerr blacklist tags prevent inappropriate content from appearing in browse/discover:
 
 **Recommended Blacklisted Tags:** `erotic`, `sexploitation`, `porn`, `pornographic`, `softcore`, `hardcore`, `adult film`, `sex`
 
@@ -209,7 +211,7 @@ Jellyseerr blacklist tags prevent inappropriate content from appearing in browse
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| Jellyseerr | 5055 | Media request UI |
+| Jellyseerr/Seerr | 5055 | Media request UI |
 | Gatekeeparr | 5023 | Content analysis & routing |
 | Radarr | 7878 | Movie management |
 | Sonarr | 8989 | TV show management |
@@ -236,11 +238,13 @@ docker-compose up -d
 
 ### 3. Configure Webhooks
 
-**Jellyseerr** (required - primary decision point):
+**Jellyseerr or Seerr** (required - primary decision point):
 Settings → Notifications → Webhook
-- Webhook URL: `http://<gatekeeper-ip>:5023/webhook/jellyseerr`
+- Webhook URL: `http://<gatekeeper-ip>:5023/webhook/jellyseerr` (or `/webhook/seerr`)
 - Notification Types: Enable **Media Requested** (MEDIA_PENDING)
 - JSON Payload: Use default template
+
+> **Note:** Seerr is the successor to Jellyseerr and Overseerr, supporting Jellyfin, Plex, and Emby. Gatekeeparr works with both — just point `JELLYSEERR_URL` at whichever you run.
 
 **Radarr** (for symlink creation after download):
 Settings → Connect → Add → Webhook
@@ -254,7 +258,7 @@ Settings → Connect → Add → Webhook
 
 ### 4. Set Up Users
 
-Users must be configured in Gatekeeparr to enable proper routing. The `jellyseerr_username` field maps Jellyseerr usernames to local Gatekeeparr users.
+Users must be configured in Gatekeeparr to enable proper routing. The `jellyseerr_username` field maps Jellyseerr/Seerr usernames to local Gatekeeparr users.
 
 **Via Docker CLI:**
 ```bash
@@ -290,8 +294,8 @@ curl -X POST http://localhost:5000/api/users \
 | `AI_API_KEY` | API key for AI provider | required |
 | `AI_MODEL` | Override default model | provider default |
 | `AI_BASE_URL` | Custom API URL (for Ollama) | provider default |
-| `JELLYSEERR_URL` | Jellyseerr base URL | `http://localhost:5055` |
-| `JELLYSEERR_API_KEY` | Jellyseerr API key | required |
+| `JELLYSEERR_URL` | Jellyseerr/Seerr base URL | `http://localhost:5055` |
+| `JELLYSEERR_API_KEY` | Jellyseerr/Seerr API key | required |
 | `RADARR_URL` | Radarr base URL | `http://localhost:7878` |
 | `RADARR_API_KEY` | Radarr API key | required |
 | `SONARR_URL` | Sonarr base URL | `http://localhost:8989` |
@@ -338,7 +342,8 @@ AI_MODEL=grok-2-latest
 |----------|-------------|
 | `POST /webhook/radarr` | Radarr webhook handler |
 | `POST /webhook/sonarr` | Sonarr webhook handler |
-| `POST /webhook/jellyseerr` | Jellyseerr webhook handler |
+| `POST /webhook/jellyseerr` | Jellyseerr/Seerr webhook handler |
+| `POST /webhook/seerr` | Alias for above (same handler) |
 | `POST /action` | Notification button callback |
 
 ### Utility

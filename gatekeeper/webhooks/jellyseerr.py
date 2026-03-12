@@ -1,17 +1,21 @@
 """
-Jellyseerr Webhook Handler
+Jellyseerr / Seerr Webhook Handler
 
-Handles incoming webhooks from Jellyseerr and makes parental content decisions.
-This is the PRIMARY decision point - all filtering happens here, before
-content reaches Radarr/Sonarr.
+Handles incoming webhooks from Jellyseerr or Seerr and makes parental content
+decisions. This is the PRIMARY decision point - all filtering happens here,
+before content reaches Radarr/Sonarr.
+
+Both Jellyseerr and Seerr use the same webhook payload format and API endpoints,
+so this handler works with either. The /webhook/seerr endpoint is an alias for
+/webhook/jellyseerr.
 
 Flow:
 1. MEDIA_PENDING webhook received
 2. Look up user, fetch TMDB rating
 3. Route decision: approve, hold, or block
-4. If approve: call Jellyseerr approve API -> flows to Radarr/Sonarr
+4. If approve: call Jellyseerr/Seerr approve API -> flows to Radarr/Sonarr
 5. If hold: run AI analysis, send MM notification, leave in pending
-6. If block: call Jellyseerr decline API -> user sees "Declined"
+6. If block: call Jellyseerr/Seerr decline API -> user sees "Declined"
 """
 
 import logging
@@ -273,11 +277,19 @@ def jellyseerr_webhook():
 
 
 @jellyseerr_bp.route('/jellyseerr/test', methods=['POST', 'GET'])
+@jellyseerr_bp.route('/seerr/test', methods=['POST', 'GET'])
 def jellyseerr_test():
-    """Test endpoint for Jellyseerr webhook configuration"""
+    """Test endpoint for Jellyseerr/Seerr webhook configuration"""
     if request.method == 'GET':
-        return jsonify({'status': 'ok', 'message': 'Jellyseerr webhook endpoint ready'}), 200
+        return jsonify({'status': 'ok', 'message': 'Jellyseerr/Seerr webhook endpoint ready'}), 200
 
     data = request.json
-    logger.info(f"Jellyseerr test webhook received: {data}")
+    logger.info(f"Jellyseerr/Seerr test webhook received: {data}")
     return jsonify({'status': 'ok', 'message': 'Test received'}), 200
+
+
+# Seerr alias — same handler, different URL for clarity
+@jellyseerr_bp.route('/seerr', methods=['POST'])
+def seerr_webhook():
+    """Alias for /webhook/jellyseerr — Seerr uses the same webhook format."""
+    return jellyseerr_webhook()
