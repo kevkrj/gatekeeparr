@@ -6,5 +6,5 @@ Integrates with Jellyseerr, Radarr, Sonarr, and supports multiple AI backends.
 """
 
 __version__ = "0.1.0"
-__author__ = "Jones Family"
+__author__ = "kevkrj"
 __license__ = "MIT"

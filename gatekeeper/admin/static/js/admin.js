@@ -34,6 +34,14 @@ const api = {
     }
 };
 
+// HTML escaping to prevent XSS
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 // Toast notifications
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
@@ -145,14 +153,14 @@ async function loadDashboard() {
             heldList.innerHTML = held.requests.map(r => `
                 <div class="request-item">
                     <div class="request-info">
-                        <strong>${r.title}</strong> ${r.year ? `(${r.year})` : ''}
+                        <strong>${escapeHtml(r.title)}</strong> ${r.year ? `(${escapeHtml(String(r.year))})` : ''}
                         <div class="request-meta">
-                            ${ratingBadge(r.ai_rating)} • ${r.media_type} • by ${r.requested_by || 'Unknown'}
+                            ${ratingBadge(r.ai_rating)} • ${escapeHtml(r.media_type)} • by ${escapeHtml(r.requested_by || 'Unknown')}
                         </div>
                     </div>
                     <div class="request-actions">
-                        <button class="btn btn-small btn-approve" onclick="approveRequest(${r.id})">Approve</button>
-                        <button class="btn btn-small btn-deny" onclick="denyRequest(${r.id})">Deny</button>
+                        <button class="btn btn-small btn-approve" onclick="approveRequest(${parseInt(r.id)})">Approve</button>
+                        <button class="btn btn-small btn-deny" onclick="denyRequest(${parseInt(r.id)})">Deny</button>
                     </div>
                 </div>
             `).join('');
@@ -170,7 +178,7 @@ async function loadDashboard() {
                         <div class="activity-item">
                             <span class="activity-icon">📥</span>
                             <div class="activity-text">
-                                <strong>${a.title}</strong> requested by ${a.user || 'Unknown'}
+                                <strong>${escapeHtml(a.title)}</strong> requested by ${escapeHtml(a.user || 'Unknown')}
                                 <div class="activity-meta">${formatDate(a.timestamp)}</div>
                             </div>
                             ${statusBadge(a.status)}
@@ -181,7 +189,7 @@ async function loadDashboard() {
                         <div class="activity-item">
                             <span class="activity-icon">${a.action === 'approve' ? '✅' : '❌'}</span>
                             <div class="activity-text">
-                                <strong>${a.request_title || 'Unknown'}</strong> ${a.action}d by ${a.decided_by}
+                                <strong>${escapeHtml(a.request_title || 'Unknown')}</strong> ${escapeHtml(a.action)}d by ${escapeHtml(a.decided_by)}
                                 <div class="activity-meta">${formatDate(a.timestamp)}</div>
                             </div>
                         </div>
@@ -236,19 +244,19 @@ async function loadRequests() {
             tbody.innerHTML = data.requests.map(r => `
                 <tr>
                     <td>
-                        <a href="#" onclick="showRequestDetail(${r.id}); return false;">
-                            ${r.title} ${r.year ? `(${r.year})` : ''}
+                        <a href="#" onclick="showRequestDetail(${parseInt(r.id)}); return false;">
+                            ${escapeHtml(r.title)} ${r.year ? `(${escapeHtml(String(r.year))})` : ''}
                         </a>
                     </td>
-                    <td>${r.media_type}</td>
+                    <td>${escapeHtml(r.media_type)}</td>
                     <td>${ratingBadge(r.ai_rating)}</td>
-                    <td>${r.requested_by || '-'}</td>
+                    <td>${escapeHtml(r.requested_by || '-')}</td>
                     <td>${statusBadge(r.status)}</td>
                     <td>${formatDate(r.created_at)}</td>
                     <td>
                         ${r.status === 'held' ? `
-                            <button class="btn btn-small btn-approve" onclick="approveRequest(${r.id})">Approve</button>
-                            <button class="btn btn-small btn-deny" onclick="denyRequest(${r.id})">Deny</button>
+                            <button class="btn btn-small btn-approve" onclick="approveRequest(${parseInt(r.id)})">Approve</button>
+                            <button class="btn btn-small btn-deny" onclick="denyRequest(${parseInt(r.id)})">Deny</button>
                         ` : '-'}
                     </td>
                 </tr>
@@ -271,11 +279,11 @@ async function showRequestDetail(requestId) {
         const r = await api.get(`/api/requests/${requestId}`);
         modalBody.innerHTML = `
             <div class="request-detail">
-                <h2>${r.title} ${r.year ? `(${r.year})` : ''}</h2>
+                <h2>${escapeHtml(r.title)} ${r.year ? `(${escapeHtml(String(r.year))})` : ''}</h2>
                 <div class="detail-grid">
                     <div class="detail-item">
                         <label>Type</label>
-                        <span>${r.media_type}</span>
+                        <span>${escapeHtml(r.media_type)}</span>
                     </div>
                     <div class="detail-item">
                         <label>Status</label>
@@ -287,7 +295,7 @@ async function showRequestDetail(requestId) {
                     </div>
                     <div class="detail-item">
                         <label>Requested By</label>
-                        <span>${r.requested_by || 'Unknown'}</span>
+                        <span>${escapeHtml(r.requested_by || 'Unknown')}</span>
                     </div>
                     <div class="detail-item">
                         <label>Requested At</label>
@@ -295,14 +303,14 @@ async function showRequestDetail(requestId) {
                     </div>
                     <div class="detail-item">
                         <label>AI Provider</label>
-                        <span>${r.ai_provider || '-'}</span>
+                        <span>${escapeHtml(r.ai_provider || '-')}</span>
                     </div>
                 </div>
 
                 ${r.ai_summary ? `
                     <div class="detail-section">
                         <h3>AI Summary</h3>
-                        <p>${r.ai_summary}</p>
+                        <p>${escapeHtml(r.ai_summary)}</p>
                     </div>
                 ` : ''}
 
@@ -310,7 +318,7 @@ async function showRequestDetail(requestId) {
                     <div class="detail-section">
                         <h3>Concerns</h3>
                         <ul>
-                            ${r.ai_concerns.map(c => `<li>${c}</li>`).join('')}
+                            ${r.ai_concerns.map(c => `<li>${escapeHtml(c)}</li>`).join('')}
                         </ul>
                     </div>
                 ` : ''}
@@ -318,7 +326,7 @@ async function showRequestDetail(requestId) {
                 ${r.held_reason ? `
                     <div class="detail-section">
                         <h3>Held Reason</h3>
-                        <p>${r.held_reason}</p>
+                        <p>${escapeHtml(r.held_reason)}</p>
                     </div>
                 ` : ''}
 
@@ -327,7 +335,7 @@ async function showRequestDetail(requestId) {
                         <h3>Approval History</h3>
                         <ul>
                             ${r.approvals.map(a => `
-                                <li>${actionBadge(a.action)} by ${a.decided_by} via ${a.source} - ${formatDate(a.created_at)}</li>
+                                <li>${actionBadge(a.action)} by ${escapeHtml(a.decided_by)} via ${escapeHtml(a.source)} - ${formatDate(a.created_at)}</li>
                             `).join('')}
                         </ul>
                     </div>
@@ -335,8 +343,8 @@ async function showRequestDetail(requestId) {
 
                 ${r.status === 'held' ? `
                     <div class="detail-actions">
-                        <button class="btn btn-primary btn-approve" onclick="approveRequest(${r.id}); document.getElementById('request-modal').style.display='none';">Approve</button>
-                        <button class="btn btn-deny" onclick="denyRequest(${r.id}); document.getElementById('request-modal').style.display='none';">Deny</button>
+                        <button class="btn btn-primary btn-approve" onclick="approveRequest(${parseInt(r.id)}); document.getElementById('request-modal').style.display='none';">Approve</button>
+                        <button class="btn btn-deny" onclick="denyRequest(${parseInt(r.id)}); document.getElementById('request-modal').style.display='none';">Deny</button>
                     </div>
                 ` : ''}
             </div>
@@ -385,12 +393,12 @@ async function loadUsers() {
         } else {
             tbody.innerHTML = data.users.map(u => `
                 <tr>
-                    <td>${u.username}</td>
+                    <td>${escapeHtml(u.username)}</td>
                     <td>${userTypeBadge(u.user_type)}</td>
-                    <td>${u.max_rating || 'No limit'}</td>
+                    <td>${escapeHtml(u.max_rating || 'No limit')}</td>
                     <td>${u.request_count || 0}</td>
                     <td>
-                        <button class="btn btn-small" onclick="editUser(${u.id})">Edit</button>
+                        <button class="btn btn-small" onclick="editUser(${parseInt(u.id)})">Edit</button>
                     </td>
                 </tr>
             `).join('');
@@ -468,10 +476,10 @@ async function loadApprovals() {
         } else {
             tbody.innerHTML = data.approvals.map(a => `
                 <tr>
-                    <td>${a.request ? a.request.title : '-'}</td>
+                    <td>${escapeHtml(a.request ? a.request.title : '-')}</td>
                     <td>${actionBadge(a.action)}</td>
-                    <td>${a.decided_by}</td>
-                    <td>${a.source}</td>
+                    <td>${escapeHtml(a.decided_by)}</td>
+                    <td>${escapeHtml(a.source)}</td>
                     <td>${formatDate(a.created_at)}</td>
                 </tr>
             `).join('');

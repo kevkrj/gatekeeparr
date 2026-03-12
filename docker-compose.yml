@@ -4,17 +4,19 @@ services:
     container_name: gatekeeper
     restart: unless-stopped
     ports:
-      - "5023:5000"
+      - "${GATEKEEPER_PORT:-5023}:5000"
     volumes:
       - ./data:/app/data
-      - /mnt/nas/media/movies:/media/movies:ro
-      - /mnt/nas/media/tv:/media/tv:ro
-      - /mnt/nas/media/kids-approved/movies:/media/kids-approved/movies:rw
-      - /mnt/nas/media/kids-approved/tv:/media/kids-approved/tv:rw
+      # Mount your media library paths (read-only for source, read-write for kids library)
+      - ${MEDIA_MOVIES_PATH:-/path/to/media/movies}:/media/movies:ro
+      - ${MEDIA_TV_PATH:-/path/to/media/tv}:/media/tv:ro
+      - ${MEDIA_KIDS_MOVIES_PATH:-/path/to/media/kids-approved/movies}:/media/kids-approved/movies:rw
+      - ${MEDIA_KIDS_TV_PATH:-/path/to/media/kids-approved/tv}:/media/kids-approved/tv:rw
     env_file:
       - .env
     environment:
       - DATABASE_URL=sqlite:////app/data/gatekeeper.db
+    # Required on Linux for the container to reach services on the host
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

@@ -209,10 +209,13 @@ def _register_auth(app: Flask):
         if path.startswith('/setup') or path.startswith('/api/setup/'):
             return None
 
-        # Unauthenticated paths: webhooks, action callbacks, health, static, login/logout, auth/me
-        if path.startswith('/webhook/') or path.startswith('/webhook'):
-            return None
-        if path.startswith('/action'):
+        # Webhooks and action callbacks: optionally authenticated via shared secret
+        if path.startswith('/webhook/') or path.startswith('/webhook') or path.startswith('/action'):
+            webhook_secret = get_config().webhook_secret
+            if webhook_secret:
+                provided = request.headers.get('X-Webhook-Secret', '')
+                if provided != webhook_secret:
+                    return jsonify({'error': 'Invalid webhook secret'}), 403
             return None
         if path in ('/health', '/login', '/logout', '/api/auth/me'):
             return None

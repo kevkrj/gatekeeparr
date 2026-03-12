@@ -6,10 +6,10 @@ Usage (from host):
     docker exec gatekeeper python /app/scripts/add_user.py <username> <user_type> [max_rating] [jellyseerr_username]
 
 Examples:
-    docker exec gatekeeper python /app/scripts/add_user.py dad admin - admin
-    docker exec gatekeeper python /app/scripts/add_user.py tommy kid PG tommy
-    docker exec gatekeeper python /app/scripts/add_user.py sarah teen PG-13 sarah
-    docker exec gatekeeper python /app/scripts/add_user.py mom adult
+    docker exec gatekeeper python /app/scripts/add_user.py parent admin - admin
+    docker exec gatekeeper python /app/scripts/add_user.py child1 kid PG child1
+    docker exec gatekeeper python /app/scripts/add_user.py teen1 teen PG-13 teen1
+    docker exec gatekeeper python /app/scripts/add_user.py adult1 adult
 
 User Types:
     - admin: Full access, all content auto-approved

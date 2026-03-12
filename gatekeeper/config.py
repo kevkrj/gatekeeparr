@@ -92,6 +92,9 @@ class Config:
     tmdb: TMDBConfig = field(default_factory=TMDBConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
 
+    # Webhook authentication
+    webhook_secret: Optional[str] = None
+
     # Content filtering defaults
     restricted_movie_ratings: list = field(default_factory=lambda: ["PG-13", "R", "NC-17"])
     restricted_tv_ratings: list = field(default_factory=lambda: ["TV-14", "TV-MA"])
@@ -133,6 +136,7 @@ class Config:
             tmdb=TMDBConfig(
                 api_key=os.getenv("TMDB_API_KEY"),
             ),
+            webhook_secret=os.getenv("WEBHOOK_SECRET"),
             notifications=NotificationConfig(
                 mattermost_webhook=os.getenv("MATTERMOST_WEBHOOK"),
                 discord_webhook=os.getenv("DISCORD_WEBHOOK"),

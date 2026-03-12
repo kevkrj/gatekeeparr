@@ -165,7 +165,7 @@ When content is held for review:
       │                                             │
       │ Movie: Deadpool & Wolverine (2024)          │
       │ Rating: R                                   │
-      │ Requested by: tommy                         │
+      │ Requested by: child1                         │
       │                                             │
       │ AI Analysis:                                │
       │ • Strong violence and gore                  │
@@ -178,12 +178,12 @@ When content is held for review:
   └─▶ Parent clicks Approve:
       └─▶ Gatekeeparr calls Jellyseerr approve API
       └─▶ Request flows to Radarr/Sonarr → download begins
-      └─▶ Mattermost updated: "Approved by @dad"
+      └─▶ Mattermost updated: "Approved by @parent"
 
   └─▶ Parent clicks Deny:
       └─▶ Gatekeeparr calls Jellyseerr decline API
       └─▶ Request marked declined (kid sees "Declined")
-      └─▶ Mattermost updated: "Denied by @mom"
+      └─▶ Mattermost updated: "Denied by @parent"
 ```
 
 ### Quality Controls (Radarr/Sonarr/Prowlarr)
@@ -223,7 +223,7 @@ Jellyseerr blacklist tags prevent inappropriate content from appearing in browse
 ### 1. Clone and Configure
 
 ```bash
-cd /media-cache/automation/gatekeeper
+git clone https://github.com/kevkrj/gatekeeparr.git && cd gatekeeparr
 cp .env.example .env
 # Edit .env with your API keys and URLs
 ```
@@ -259,23 +259,23 @@ Users must be configured in Gatekeeparr to enable proper routing. The `jellyseer
 **Via Docker CLI:**
 ```bash
 # Add admin user (maps to Jellyseerr username "admin")
-docker exec gatekeeper python /app/scripts/add_user.py dad admin - admin
+docker exec gatekeeper python /app/scripts/add_user.py parent admin - admin
 
-# Add kid (maps to Jellyseerr username "tommy")
-docker exec gatekeeper python /app/scripts/add_user.py tommy kid PG tommy
+# Add kid (maps to Jellyseerr username "child1")
+docker exec gatekeeper python /app/scripts/add_user.py child1 kid PG child1
 
 # Add teen
-docker exec gatekeeper python /app/scripts/add_user.py teen_user teen PG-13 teen_jellyseerr
+docker exec gatekeeper python /app/scripts/add_user.py teen1 teen PG-13 teen1_jellyseerr
 
 # Add adult
-docker exec gatekeeper python /app/scripts/add_user.py mom adult - mom
+docker exec gatekeeper python /app/scripts/add_user.py adult1 adult - adult1
 ```
 
 **Via API:**
 ```bash
 curl -X POST http://localhost:5000/api/users \
   -H "Content-Type: application/json" \
-  -d '{"username": "dad", "user_type": "admin", "jellyseerr_username": "admin"}'
+  -d '{"username": "parent", "user_type": "admin", "jellyseerr_username": "admin"}'
 ```
 
 **Important:** The `jellyseerr_username` must match exactly what Jellyseerr sends in webhooks (case-insensitive). Check your Jellyseerr user list to find the correct usernames.
@@ -349,7 +349,7 @@ AI_MODEL=grok-2-latest
 | `GET /test` | Test AI integration |
 | `GET /test/connections` | Test all service connections |
 
-### API (Coming Soon)
+### API
 
 | Endpoint | Description |
 |----------|-------------|
@@ -401,16 +401,6 @@ pip install -r requirements.txt
 python -m gatekeeper.app
 ```
 
-### Testing
-
-```bash
-# Run tests
-pytest
-
-# Test specific module
-pytest tests/test_analyzer.py
-```
-
 ## Roadmap
 
 - [x] Core webhook handlers
@@ -420,9 +410,9 @@ pytest tests/test_analyzer.py
 - [x] Request tracking
 - [x] Kids libraries (symlink-based Kids Movies + Kids TV)
 - [ ] ntfy.sh mobile notifications
-- [ ] Admin panel UI
-- [ ] Jellyseerr SSO
-- [ ] First-run setup scripts (for open source release)
+- [x] Admin panel UI
+- [x] Jellyseerr SSO (login via Jellyseerr credentials)
+- [x] First-run setup wizard
 
 ## Contributing
 
