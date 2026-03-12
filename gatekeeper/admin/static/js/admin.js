@@ -576,6 +576,13 @@ function updateAutoDenyLabel() {
 document.getElementById('edit-max-rating').addEventListener('change', updateAutoDenyLabel);
 document.getElementById('edit-max-approval-rating').addEventListener('change', updateAutoDenyLabel);
 
+// Stat card click handlers
+document.querySelectorAll('.stat-card.clickable').forEach(card => {
+    card.addEventListener('click', () => {
+        navigateToView('requests', { status: card.dataset.filterStatus });
+    });
+});
+
 // Initial load
 loadCurrentUser();
 loadDashboard();
