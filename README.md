@@ -36,32 +36,32 @@ Nothing else in the *arr ecosystem handles parental content filtering with nuanc
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐
-│ Jellyseerr/Seerr│────▶│   Gatekeeparr   │
-│  (User Request) │     │   (Analysis)    │
-└─────────────────┘     └────────┬────────┘
-                                 │
-         ┌───────────────────────┼───────────────────────┐
-         │                       │                       │
-    ┌────▼────┐            ┌─────▼─────┐           ┌─────▼─────┐
-    │  Admin  │            │   Adult   │           │   Kid     │
-    │ Auto ✓  │            │  Auto ✓   │           │  Analyze  │
-    └─────────┘            └───────────┘           └─────┬─────┘
-                                                         │
+┌─────────────────┐      ┌─────────────────┐
+│ Jellyseerr/Seerr│────> │   Gatekeeparr   │
+│  (User Request) │      │   (Analysis)    │
+└─────────────────┘      └────────┬────────┘
+                                  │
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+     ┌────▼────┐            ┌─────▼─────┐           ┌─────▼─────┐
+     │  Admin  │            │   Adult   │           │   Kid     │
+     │  Auto   │            │   Auto    │           │  Analyze  │
+     └─────────┘            └───────────┘           └─────┬─────┘
+                                                          │
                                                 ┌────────┴────────┐
                                                 │                 │
-                                          ┌─────▼─────┐    ┌─────▼─────┐
-                                          │ ≤ Max Auto │    │ > Max Auto│
-                                          │  Approve ✓ │    │           │
-                                          └───────────┘    └─────┬─────┘
-                                                                 │
-                                                        ┌────────┴────────┐
-                                                        │                 │
-                                                  ┌─────▼─────┐    ┌─────▼─────┐
-                                                  │ ≤ Approval │    │ > Approval│
-                                                  │  Ceiling   │    │  Ceiling  │
-                                                  │   HOLD ⏳   │    │ AUTO-DENY │
-                                                  └───────────┘    └───────────┘
+                                          ┌─────▼──────┐    ┌─────▼──────┐
+                                          │ ≤ Max Auto │    │ > Max Auto │
+                                          │  Approve   │    │            │
+                                          └────────────┘    └─────┬──────┘
+                                                                  │
+                                                         ┌────────┴────────┐
+                                                         │                 │
+                                                   ┌─────▼──────┐    ┌─────▼──────┐
+                                                   │ ≤ Approval │    │ > Approval │
+                                                   │  Ceiling   │    │  Ceiling   │
+                                                   │   HOLD     │    │ AUTO-DENY  │
+                                                   └────────────┘    └────────────┘
 ```
 
 ### Request Flow
@@ -83,11 +83,11 @@ When content is held for review, the parent receives a notification:
 
 ```
 ┌─────────────────────────────────────────────┐
-│ 🎬 Content Request Held                     │
+│    Content Request Held                     │
 │                                             │
-│ Movie: Deadpool & Wolverine (2024)          │
-│ Rating: R                                   │
-│ Requested by: child1                        │
+│ [Movie Name] [(RATING)]                     │
+│ [Age Reccomendation] [One line content]     │
+│ Requested by: [User]                        │
 │                                             │
 │ AI Analysis:                                │
 │ • Strong violence and gore                  │
