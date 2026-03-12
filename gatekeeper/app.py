@@ -1,5 +1,5 @@
 """
-Gatekeeper Flask Application
+Gatekeeparr Flask Application
 
 Main application factory and entry point.
 """
@@ -146,7 +146,7 @@ def create_app(config: Config = None) -> Flask:
 
 def _register_auth(app: Flask):
     """Register authentication routes and API before_request hook."""
-    from gatekeeper.auth import login_via_jellyseerr
+    from gatekeeper.auth import login_via_jellyseerr, login_via_jellyfin
 
     @app.route('/login', methods=['GET'])
     def login():
@@ -158,15 +158,20 @@ def _register_auth(app: Flask):
 
     @app.route('/login', methods=['POST'])
     def login_post():
-        """Handle login form submission (JSON)."""
+        """Handle login form submission (JSON). Supports local and Jellyfin auth."""
         data = request.get_json(silent=True) or {}
+        auth_type = data.get('auth_type', 'local')
         email = data.get('email', '').strip()
         password = data.get('password', '')
 
         if not email or not password:
-            return jsonify({'success': False, 'error': 'Email and password are required.'}), 400
+            return jsonify({'success': False, 'error': 'Username/email and password are required.'}), 400
 
-        user_data = login_via_jellyseerr(email, password)
+        if auth_type == 'jellyfin':
+            user_data = login_via_jellyfin(email, password)
+        else:
+            user_data = login_via_jellyseerr(email, password)
+
         if user_data is None:
             return jsonify({'success': False, 'error': 'Invalid credentials. Please try again.'}), 401
 

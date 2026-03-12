@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gatekeeper - Sign In</title>
+    <title>Gatekeeparr - Sign In</title>
     <link rel="stylesheet" href="/static/css/admin.css">
     <style>
         .login-wrapper {
@@ -109,6 +109,38 @@
             display: block;
         }
 
+        .auth-toggle {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .auth-toggle-btn {
+            flex: 1;
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            border: none;
+            padding: 0.6rem 1rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .auth-toggle-btn + .auth-toggle-btn {
+            border-left: 1px solid var(--border);
+        }
+
+        .auth-toggle-btn.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .auth-toggle-btn:hover:not(.active) {
+            background: var(--bg-card);
+        }
+
         .jellyseerr-note {
             text-align: center;
             margin-top: 1.5rem;
@@ -124,15 +156,23 @@
         <div class="login-card">
             <div class="login-header">
                 <span class="brand-icon">&#x1f6e1;&#xfe0f;</span>
-                <h1>Gatekeeper</h1>
-                <p>Sign in with your Jellyseerr account</p>
+                <h1>Gatekeeparr</h1>
+                <p>Sign in with your Jellyseerr / Seerr account</p>
             </div>
 
             <div id="login-error" class="login-error"></div>
 
             <form id="login-form" class="login-form" method="POST" action="/login">
                 <div class="form-group">
-                    <label for="email">Email or Username</label>
+                    <label>Sign in with</label>
+                    <div class="auth-toggle">
+                        <button type="button" class="auth-toggle-btn active" data-auth="jellyfin">Jellyfin</button>
+                        <button type="button" class="auth-toggle-btn" data-auth="local">Seerr (Local)</button>
+                    </div>
+                    <input type="hidden" id="auth_type" name="auth_type" value="jellyfin">
+                </div>
+                <div class="form-group">
+                    <label for="email" id="email-label">Username</label>
                     <input type="text" id="email" name="email" required autocomplete="username" autofocus>
                 </div>
                 <div class="form-group">
@@ -143,7 +183,7 @@
             </form>
 
             <div class="jellyseerr-note">
-                Authenticated via Jellyseerr
+                Authenticated via Jellyseerr / Seerr
             </div>
         </div>
     </div>

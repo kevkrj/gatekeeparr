@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gatekeeper Setup</title>
+    <title>Gatekeeparr Setup</title>
     <link rel="stylesheet" href="/static/css/admin.css">
     <link rel="stylesheet" href="/static/css/setup.css">
 </head>
@@ -11,7 +11,7 @@
     <nav class="navbar">
         <div class="nav-brand">
             <span class="brand-icon">&#x1f6e1;&#xfe0f;</span>
-            <span class="brand-text">Gatekeeper Setup</span>
+            <span class="brand-text">Gatekeeparr Setup</span>
         </div>
     </nav>
 
@@ -55,17 +55,17 @@
         <div class="setup-step active" id="step-1">
             <div class="card setup-card">
                 <h2>Service Connections</h2>
-                <p class="setup-description">Connect Gatekeeper to your media management services.</p>
+                <p class="setup-description">Connect Gatekeeparr to your media management services.</p>
 
                 <div class="service-group">
-                    <h3>Jellyseerr</h3>
+                    <h3>Jellyseerr / Seerr</h3>
                     <div class="form-group">
                         <label for="jellyseerr_url">URL</label>
                         <input type="text" id="jellyseerr_url" placeholder="http://localhost:5055" value="http://localhost:5055">
                     </div>
                     <div class="form-group">
                         <label for="jellyseerr_api_key">API Key</label>
-                        <input type="password" id="jellyseerr_api_key" placeholder="Enter Jellyseerr API key">
+                        <input type="password" id="jellyseerr_api_key" placeholder="Enter API key">
                     </div>
                     <div class="test-row">
                         <button class="btn btn-small" onclick="testConnection('jellyseerr')">Test Connection</button>
@@ -116,7 +116,7 @@
         <div class="setup-step" id="step-2">
             <div class="card setup-card">
                 <h2>AI Provider</h2>
-                <p class="setup-description">Gatekeeper uses AI to analyze content ratings and suitability. Choose your provider.</p>
+                <p class="setup-description">Gatekeeparr uses AI to analyze content ratings and suitability. Choose your provider.</p>
 
                 <div class="form-group">
                     <label for="ai_provider">Provider</label>
@@ -228,12 +228,12 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Link to Jellyseerr User</label>
-                    <button class="btn btn-small" id="btn-load-users" onclick="loadJellyseerrUsers()">Load Jellyseerr Users</button>
+                    <label>Link to Seerr User</label>
+                    <button class="btn btn-small" id="btn-load-users" onclick="loadJellyseerrUsers()">Load Seerr Users</button>
                     <select id="jellyseerr_user_select" style="display:none; margin-top: 0.5rem;">
-                        <option value="">-- Select a Jellyseerr user --</option>
+                        <option value="">-- Select a Seerr user --</option>
                     </select>
-                    <span class="form-hint">Links this admin to a Jellyseerr account for request tracking.</span>
+                    <span class="form-hint">Links this admin to a Jellyseerr / Seerr account for request tracking.</span>
                 </div>
 
                 <div class="step-actions">
@@ -265,7 +265,7 @@
             <div class="card setup-card setup-done">
                 <div class="done-icon">&#x2705;</div>
                 <h2>Setup Complete!</h2>
-                <p class="setup-description">Gatekeeper is configured and ready to go.</p>
+                <p class="setup-description">Gatekeeparr is configured and ready to go.</p>
                 <p class="setup-description note">A container restart is recommended to fully load the new configuration.</p>
                 <a href="/admin" class="btn btn-primary">Go to Admin Panel</a>
             </div>

@@ -214,7 +214,7 @@ def complete():
 
     return jsonify({
         'success': True,
-        'message': 'Setup complete! Gatekeeper is ready.',
+        'message': 'Setup complete! Gatekeeparr is ready.',
         'user': user.to_dict(),
         'env_path': ENV_FILE_PATH,
         'restart_note': 'A container restart is recommended to fully load the new configuration.',

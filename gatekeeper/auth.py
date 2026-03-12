@@ -1,9 +1,9 @@
 """
-Authentication module for Gatekeeper admin panel.
+Authentication module for Gatekeeparr admin panel.
 
-Authenticates users against Jellyseerr/Seerr's local auth endpoint and manages
-Flask sessions. Only admins get full access; non-admins get read-only dashboard
-access.
+Authenticates users against Jellyseerr/Seerr's local or Jellyfin auth endpoint
+and manages Flask sessions. Only admins get full access; non-admins get
+read-only dashboard access.
 """
 
 import functools
@@ -59,6 +59,51 @@ def login_via_jellyseerr(email: str, password: str) -> dict | None:
 
     except http_requests.RequestException as e:
         logger.error("Jellyseerr auth request error: %s", e)
+        return None
+
+
+def login_via_jellyfin(username: str, password: str) -> dict | None:
+    """
+    Authenticate against Seerr's Jellyfin auth endpoint.
+
+    Args:
+        username: Jellyfin username
+        password: Jellyfin password
+
+    Returns:
+        User dict from Seerr on success, None on failure
+    """
+    config = get_config()
+    base_url = config.jellyseerr.url.rstrip('/')
+    auth_url = f"{base_url}/api/v1/auth/jellyfin"
+
+    try:
+        resp = http_requests.post(
+            auth_url,
+            json={"username": username, "password": password},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            timeout=15,
+        )
+
+        if resp.status_code == 200:
+            user_data = resp.json()
+            logger.info(
+                "Jellyfin auth success for user %s (id=%s)",
+                user_data.get("username") or user_data.get("email"),
+                user_data.get("id"),
+            )
+            return user_data
+
+        logger.warning(
+            "Jellyfin auth failed for %s: HTTP %s", username, resp.status_code
+        )
+        return None
+
+    except http_requests.RequestException as e:
+        logger.error("Jellyfin auth request error: %s", e)
         return None
 
 
