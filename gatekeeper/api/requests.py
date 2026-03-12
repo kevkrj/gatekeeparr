@@ -98,16 +98,20 @@ def approve_request(request_id):
     notes = data.get('notes', '')
     decided_by = data.get('decided_by', 'admin_panel')
 
-    # Approve in Jellyseerr
-    if not req.jellyseerr_request_id:
-        return jsonify({'error': 'No Jellyseerr request ID'}), 400
-
-    try:
-        jellyseerr = JellyseerrClient()
-        if not jellyseerr.approve_request(req.jellyseerr_request_id):
-            return jsonify({'error': 'Failed to approve in Jellyseerr'}), 500
-    except Exception as e:
-        return jsonify({'error': f'Jellyseerr error: {str(e)}'}), 500
+    # Approve in Seerr (if the request still exists there)
+    seerr_note = ''
+    if req.jellyseerr_request_id:
+        try:
+            jellyseerr = JellyseerrClient()
+            seerr_req = jellyseerr.get_request(req.jellyseerr_request_id)
+            if seerr_req is None:
+                seerr_note = 'Request no longer exists in Seerr; updated locally only.'
+            elif not jellyseerr.approve_request(req.jellyseerr_request_id):
+                return jsonify({'error': 'Failed to approve in Seerr'}), 500
+        except Exception as e:
+            return jsonify({'error': f'Seerr error: {str(e)}'}), 500
+    else:
+        seerr_note = 'No Seerr request ID; updated locally only.'
 
     # Update request status
     req.status = Request.STATUS_APPROVED
@@ -117,15 +121,19 @@ def approve_request(request_id):
         request_id=request_id,
         action='approve',
         decided_by=decided_by,
-        notes=notes,
+        notes=notes or seerr_note,
         source='admin_panel'
     )
     db.session.add(approval)
     db.session.commit()
 
+    msg = f'Approved: {req.title}'
+    if seerr_note:
+        msg += f' ({seerr_note})'
+
     return jsonify({
         'success': True,
-        'message': f'Approved: {req.title}',
+        'message': msg,
         'request': req.to_dict()
     })
 
@@ -145,16 +153,20 @@ def deny_request(request_id):
     notes = data.get('notes', '')
     decided_by = data.get('decided_by', 'admin_panel')
 
-    # Decline in Jellyseerr
-    if not req.jellyseerr_request_id:
-        return jsonify({'error': 'No Jellyseerr request ID'}), 400
-
-    try:
-        jellyseerr = JellyseerrClient()
-        if not jellyseerr.decline_request(req.jellyseerr_request_id):
-            return jsonify({'error': 'Failed to decline in Jellyseerr'}), 500
-    except Exception as e:
-        return jsonify({'error': f'Jellyseerr error: {str(e)}'}), 500
+    # Decline in Seerr (if the request still exists there)
+    seerr_note = ''
+    if req.jellyseerr_request_id:
+        try:
+            jellyseerr = JellyseerrClient()
+            seerr_req = jellyseerr.get_request(req.jellyseerr_request_id)
+            if seerr_req is None:
+                seerr_note = 'Request no longer exists in Seerr; updated locally only.'
+            elif not jellyseerr.decline_request(req.jellyseerr_request_id):
+                return jsonify({'error': 'Failed to decline in Seerr'}), 500
+        except Exception as e:
+            return jsonify({'error': f'Seerr error: {str(e)}'}), 500
+    else:
+        seerr_note = 'No Seerr request ID; updated locally only.'
 
     # Update request status
     req.status = Request.STATUS_DENIED
@@ -164,15 +176,19 @@ def deny_request(request_id):
         request_id=request_id,
         action='deny',
         decided_by=decided_by,
-        notes=notes,
+        notes=notes or seerr_note,
         source='admin_panel'
     )
     db.session.add(approval)
     db.session.commit()
 
+    msg = f'Denied: {req.title}'
+    if seerr_note:
+        msg += f' ({seerr_note})'
+
     return jsonify({
         'success': True,
-        'message': f'Denied: {req.title}',
+        'message': msg,
         'request': req.to_dict()
     })
 
@@ -195,4 +211,96 @@ def delete_request(request_id):
     return jsonify({
         'success': True,
         'message': f'Deleted: {title}'
+    })
+
+
+@requests_bp.route('/sync', methods=['POST'])
+def sync_requests():
+    """
+    Sync local requests with Seerr. Removes requests that no longer exist
+    in Seerr, and updates status for requests that were resolved externally.
+    Also cleans up duplicate pending entries for the same Seerr request.
+    """
+    import logging
+    from gatekeeper.services.jellyseerr import JellyseerrClient
+    from gatekeeper.models.notification import Notification
+
+    logger = logging.getLogger(__name__)
+    jellyseerr = JellyseerrClient()
+
+    removed = []
+    updated = []
+    deduped = []
+
+    # Get all local requests that have a Seerr request ID
+    local_requests = Request.query.filter(
+        Request.jellyseerr_request_id.isnot(None)
+    ).order_by(Request.id).all()
+
+    # Group by seerr ID to find duplicates
+    seen_seerr_ids = {}
+    for req in local_requests:
+        seerr_id = req.jellyseerr_request_id
+        if seerr_id not in seen_seerr_ids:
+            seen_seerr_ids[seerr_id] = []
+        seen_seerr_ids[seerr_id].append(req)
+
+    # Deduplicate: keep the most recent non-pending entry, or the latest one
+    for seerr_id, dupes in seen_seerr_ids.items():
+        if len(dupes) <= 1:
+            continue
+        # Prefer non-pending records
+        non_pending = [r for r in dupes if r.status != Request.STATUS_PENDING]
+        keep = non_pending[-1] if non_pending else dupes[-1]
+        for req in dupes:
+            if req.id != keep.id:
+                Approval.query.filter_by(request_id=req.id).delete()
+                Notification.query.filter_by(request_id=req.id).delete()
+                db.session.delete(req)
+                deduped.append(f"{req.title} (id={req.id})")
+
+    db.session.flush()
+
+    # Check remaining requests against Seerr
+    remaining = Request.query.filter(
+        Request.jellyseerr_request_id.isnot(None),
+        Request.status.in_([
+            Request.STATUS_PENDING, Request.STATUS_HELD,
+            Request.STATUS_ANALYZING
+        ])
+    ).all()
+
+    seerr_status_map = {1: 'pending', 2: 'approved', 3: 'declined'}
+
+    for req in remaining:
+        try:
+            seerr_req = jellyseerr.get_request(req.jellyseerr_request_id)
+        except Exception as e:
+            logger.warning("Failed to check seerr request %s: %s", req.jellyseerr_request_id, e)
+            continue
+
+        if seerr_req is None:
+            # Request deleted from Seerr - remove locally
+            Approval.query.filter_by(request_id=req.id).delete()
+            Notification.query.filter_by(request_id=req.id).delete()
+            db.session.delete(req)
+            removed.append(f"{req.title} (seerr_id={req.jellyseerr_request_id})")
+        else:
+            # Check if Seerr already resolved it
+            seerr_status = seerr_req.get('status')
+            if seerr_status == 2 and req.status != Request.STATUS_APPROVED:
+                req.status = Request.STATUS_APPROVED
+                updated.append(f"{req.title} → approved")
+            elif seerr_status == 3 and req.status != Request.STATUS_DENIED:
+                req.status = Request.STATUS_DENIED
+                updated.append(f"{req.title} → denied")
+
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'removed': removed,
+        'updated': updated,
+        'deduped': deduped,
+        'summary': f"Removed {len(removed)}, updated {len(updated)}, deduped {len(deduped)}"
     })

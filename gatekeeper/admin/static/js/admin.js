@@ -97,25 +97,39 @@ function actionBadge(action) {
     return `<span class="badge badge-${colors[action] || 'gray'}">${labels[action] || action}</span>`;
 }
 
+// Navigate to a view, optionally setting a filter
+function navigateToView(view, filterOpts) {
+    // Update nav
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    const navLink = document.querySelector(`.nav-link[data-view="${view}"]`);
+    if (navLink) navLink.classList.add('active');
+
+    // Show view
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById(`${view}-view`).classList.add('active');
+
+    // Apply filters before loading
+    if (filterOpts) {
+        if (filterOpts.status !== undefined) {
+            document.getElementById('filter-status').value = filterOpts.status;
+        }
+        if (filterOpts.mediaType !== undefined) {
+            document.getElementById('filter-media-type').value = filterOpts.mediaType;
+        }
+    }
+
+    // Load data
+    if (view === 'dashboard') loadDashboard();
+    else if (view === 'requests') loadRequests();
+    else if (view === 'users') loadUsers();
+    else if (view === 'approvals') loadApprovals();
+}
+
 // View navigation
 document.querySelectorAll('.nav-link').forEach(link => {
     link.addEventListener('click', (e) => {
         e.preventDefault();
-        const view = link.dataset.view;
-
-        // Update nav
-        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-        link.classList.add('active');
-
-        // Show view
-        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-        document.getElementById(`${view}-view`).classList.add('active');
-
-        // Load data
-        if (view === 'dashboard') loadDashboard();
-        else if (view === 'requests') loadRequests();
-        else if (view === 'users') loadUsers();
-        else if (view === 'approvals') loadApprovals();
+        navigateToView(link.dataset.view);
     });
 });
 
@@ -489,6 +503,20 @@ async function loadApprovals() {
         showToast('Failed to load approvals', 'error');
     }
 }
+
+// Sync requests with Seerr
+document.getElementById('btn-sync-requests').addEventListener('click', async () => {
+    try {
+        showToast('Syncing with Seerr...', 'info');
+        const result = await api.post('/api/requests/sync');
+        showToast(result.summary, 'success');
+        loadRequests();
+        loadDashboard();
+    } catch (err) {
+        console.error('Failed to sync requests:', err);
+        showToast('Failed to sync requests', 'error');
+    }
+});
 
 // Event listeners for filters and buttons
 document.getElementById('filter-status').addEventListener('change', loadRequests);

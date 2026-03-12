@@ -30,19 +30,19 @@
             <h1>Dashboard</h1>
 
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card clickable" onclick="navigateToView('requests', {status: ''})">
                     <div class="stat-value" id="stat-total">-</div>
                     <div class="stat-label">Total Requests</div>
                 </div>
-                <div class="stat-card held">
+                <div class="stat-card held clickable" onclick="navigateToView('requests', {status: 'held'})">
                     <div class="stat-value" id="stat-held">-</div>
                     <div class="stat-label">Held for Review</div>
                 </div>
-                <div class="stat-card approved">
+                <div class="stat-card approved clickable" onclick="navigateToView('requests', {status: 'approved'})">
                     <div class="stat-value" id="stat-approved">-</div>
                     <div class="stat-label">Approved</div>
                 </div>
-                <div class="stat-card denied">
+                <div class="stat-card denied clickable" onclick="navigateToView('requests', {status: 'denied'})">
                     <div class="stat-value" id="stat-denied">-</div>
                     <div class="stat-label">Denied</div>
                 </div>
@@ -92,6 +92,7 @@
                     <option value="movie">Movies</option>
                     <option value="series">Series</option>
                 </select>
+                <button id="btn-sync-requests" class="btn">Sync with Seerr</button>
                 <button id="btn-refresh-requests" class="btn">Refresh</button>
             </div>
 

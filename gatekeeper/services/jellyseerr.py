@@ -143,6 +143,15 @@ class JellyseerrClient:
     # Request Methods
     # -------------------------------------------------------------------------
 
+    def get_request(self, request_id: int) -> Optional[dict]:
+        """Get a request by ID. Returns None if not found."""
+        try:
+            return self._get(f"/request/{request_id}")
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                return None
+            raise
+
     def approve_request(self, request_id: int) -> bool:
         """Approve a pending request in Jellyseerr"""
         try:

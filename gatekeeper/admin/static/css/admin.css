@@ -163,6 +163,16 @@ h2 {
     background: rgba(239, 68, 68, 0.1);
 }
 
+.stat-card.clickable {
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.stat-card.clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 .stat-value {
     font-size: 2.5rem;
     font-weight: 700;
