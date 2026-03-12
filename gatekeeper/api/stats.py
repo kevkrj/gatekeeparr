@@ -5,6 +5,7 @@ from gatekeeper.models import db
 from gatekeeper.models.request import Request
 from gatekeeper.models.user import User
 from gatekeeper.models.approval import Approval
+from gatekeeper.auth import require_auth_api, require_admin
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 
@@ -12,6 +13,8 @@ stats_bp = Blueprint('stats', __name__, url_prefix='/api/stats')
 
 
 @stats_bp.route('', methods=['GET'])
+@require_auth_api
+@require_admin
 def get_stats():
     """Get comprehensive dashboard statistics."""
 
@@ -85,6 +88,8 @@ def get_stats():
 
 
 @stats_bp.route('/timeline', methods=['GET'])
+@require_auth_api
+@require_admin
 def get_timeline():
     """Get request timeline for the last 30 days."""
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
@@ -108,6 +113,8 @@ def get_timeline():
 
 
 @stats_bp.route('/top-users', methods=['GET'])
+@require_auth_api
+@require_admin
 def get_top_users():
     """Get users with most requests."""
     top_users = db.session.query(
@@ -127,6 +134,8 @@ def get_top_users():
 
 
 @stats_bp.route('/recent-activity', methods=['GET'])
+@require_auth_api
+@require_admin
 def get_recent_activity():
     """Get recent activity feed (last 20 events)."""
     # Get recent requests

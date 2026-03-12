@@ -5,6 +5,7 @@ from gatekeeper.models import db
 from gatekeeper.models.request import Request
 from gatekeeper.models.user import User
 from gatekeeper.models.approval import Approval
+from gatekeeper.auth import require_auth_api, require_admin
 from sqlalchemy import desc, func
 from datetime import datetime, timedelta
 
@@ -84,6 +85,8 @@ def get_request(request_id):
 
 
 @requests_bp.route('/<int:request_id>/approve', methods=['POST'])
+@require_auth_api
+@require_admin
 def approve_request(request_id):
     """Approve a held request via Jellyseerr API."""
     from gatekeeper.services.jellyseerr import JellyseerrClient
@@ -139,6 +142,8 @@ def approve_request(request_id):
 
 
 @requests_bp.route('/<int:request_id>/deny', methods=['POST'])
+@require_auth_api
+@require_admin
 def deny_request(request_id):
     """Deny a held request via Jellyseerr API."""
     from gatekeeper.services.jellyseerr import JellyseerrClient
@@ -194,6 +199,8 @@ def deny_request(request_id):
 
 
 @requests_bp.route('/<int:request_id>', methods=['DELETE'])
+@require_auth_api
+@require_admin
 def delete_request(request_id):
     """Delete a request (for cleaning up test data)."""
     from gatekeeper.models.notification import Notification
@@ -215,6 +222,8 @@ def delete_request(request_id):
 
 
 @requests_bp.route('/sync', methods=['POST'])
+@require_auth_api
+@require_admin
 def sync_requests():
     """
     Sync local requests with Seerr. Removes requests that no longer exist

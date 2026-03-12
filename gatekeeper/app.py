@@ -41,7 +41,7 @@ def create_app(config: Config = None) -> Flask:
     app.config['SQLALCHEMY_DATABASE_URI'] = config.database_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
     app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
     # Configure logging
@@ -61,6 +61,22 @@ def create_app(config: Config = None) -> Flask:
 
     # Register auth routes and API protection
     _register_auth(app)
+
+    # Security headers
+    @app.after_request
+    def set_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "connect-src 'self'"
+        )
+        return response
 
     # Health check endpoint (unauthenticated)
     @app.route('/health', methods=['GET'])
@@ -86,7 +102,8 @@ def create_app(config: Config = None) -> Flask:
                 'result': result.to_dict()
             }), 200
         except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
+            logging.getLogger(__name__).error("Test endpoint failed: %s", e)
+            return jsonify({'status': 'error', 'error': 'AI analysis failed'}), 500
 
     # Connection test endpoints
     @app.route('/test/connections', methods=['GET'])
@@ -101,23 +118,20 @@ def create_app(config: Config = None) -> Flask:
         try:
             jellyseerr = JellyseerrClient()
             results['jellyseerr'] = jellyseerr.test_connection()
-        except Exception as e:
+        except Exception:
             results['jellyseerr'] = False
-            results['jellyseerr_error'] = str(e)
 
         try:
             radarr = RadarrClient()
             results['radarr'] = radarr.test_connection()
-        except Exception as e:
+        except Exception:
             results['radarr'] = False
-            results['radarr_error'] = str(e)
 
         try:
             sonarr = SonarrClient()
             results['sonarr'] = sonarr.test_connection()
-        except Exception as e:
+        except Exception:
             results['sonarr'] = False
-            results['sonarr_error'] = str(e)
 
         all_ok = all(results.get(k) for k in ['jellyseerr', 'radarr', 'sonarr'])
         return jsonify({
@@ -175,17 +189,29 @@ def _register_auth(app: Flask):
         if user_data is None:
             return jsonify({'success': False, 'error': 'Invalid credentials. Please try again.'}), 401
 
+        # Regenerate session to prevent session fixation
+        session.clear()
+
+        # Check if user is admin via Seerr permissions or local Gatekeeparr record
+        seerr_id = user_data.get('id')
+        seerr_admin = bool(user_data.get('permissions', 0) & 2)
+        if not seerr_admin and seerr_id:
+            from gatekeeper.models.user import User
+            local_user = User.query.filter_by(jellyseerr_id=seerr_id).first()
+            if local_user and local_user.is_admin():
+                seerr_admin = True
+
         # Store essential user info in session
         session.permanent = True
         session['user'] = {
-            'id': user_data.get('id'),
+            'id': seerr_id,
             'email': user_data.get('email', ''),
             'username': user_data.get('username', ''),
             'display_name': user_data.get('displayName', ''),
             'avatar': user_data.get('avatar', ''),
             'permissions': user_data.get('permissions', 0),
             'user_type': user_data.get('userType', 0),
-            'is_admin': bool(user_data.get('permissions', 0) & 2),
+            'is_admin': seerr_admin,
         }
 
         return jsonify({'success': True, 'redirect': '/admin'}), 200
@@ -214,13 +240,18 @@ def _register_auth(app: Flask):
         if path.startswith('/setup') or path.startswith('/api/setup/'):
             return None
 
-        # Webhooks and action callbacks: optionally authenticated via shared secret
+        # Webhooks and action callbacks: authenticated via shared secret
         if path.startswith('/webhook/') or path.startswith('/webhook') or path.startswith('/action'):
             webhook_secret = get_config().webhook_secret
             if webhook_secret:
                 provided = request.headers.get('X-Webhook-Secret', '')
                 if provided != webhook_secret:
                     return jsonify({'error': 'Invalid webhook secret'}), 403
+            else:
+                logging.getLogger(__name__).warning(
+                    "Webhook received without WEBHOOK_SECRET configured - "
+                    "set WEBHOOK_SECRET in .env to secure webhook endpoints"
+                )
             return None
         if path in ('/health', '/login', '/logout', '/api/auth/me'):
             return None

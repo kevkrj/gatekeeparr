@@ -12,7 +12,7 @@ If you discover a security vulnerability in Gatekeeparr, please report it respon
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email **kevin@jonesfamily.club** with:
+Instead, please open a [private security advisory](../../security/advisories/new) on GitHub, or email the maintainer listed in the repository profile, with:
 
 - A description of the vulnerability
 - Steps to reproduce the issue

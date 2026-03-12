@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from gatekeeper.models import db
 from gatekeeper.models.approval import Approval
 from gatekeeper.models.request import Request
+from gatekeeper.auth import require_auth_api, require_admin
 from sqlalchemy import desc
 from datetime import datetime, timedelta
 
@@ -11,6 +12,8 @@ approvals_bp = Blueprint('approvals', __name__, url_prefix='/api/approvals')
 
 
 @approvals_bp.route('', methods=['GET'])
+@require_auth_api
+@require_admin
 def list_approvals():
     """
     List approval history with optional filtering.
@@ -68,6 +71,8 @@ def list_approvals():
 
 
 @approvals_bp.route('/request/<int:request_id>', methods=['GET'])
+@require_auth_api
+@require_admin
 def get_approvals_for_request(request_id):
     """Get all approvals for a specific request."""
     approvals = Approval.query.filter_by(request_id=request_id).order_by(desc(Approval.created_at)).all()
@@ -79,6 +84,8 @@ def get_approvals_for_request(request_id):
 
 
 @approvals_bp.route('/recent', methods=['GET'])
+@require_auth_api
+@require_admin
 def recent_approvals():
     """Get recent approval activity (last 24 hours)."""
     cutoff = datetime.utcnow() - timedelta(hours=24)

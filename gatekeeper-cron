@@ -1,3 +1,4 @@
-# Gatekeeper scheduled tasks
+# Gatekeeparr scheduled tasks
 # Run daily cleanup of broken symlinks in kids-approved folder
-0 3 * * * root curl -s -X POST http://10.40.41.10:5000/maintenance/cleanup-symlinks > /dev/null 2>&1
+# Replace GATEKEEPER_URL with your actual Gatekeeparr instance URL
+0 3 * * * root curl -s -X POST http://localhost:5000/maintenance/cleanup-symlinks > /dev/null 2>&1

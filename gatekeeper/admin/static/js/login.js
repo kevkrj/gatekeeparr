@@ -51,8 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             if (response.ok && data.success) {
-                // Redirect to admin panel
-                window.location.href = data.redirect || '/admin';
+                // Redirect to admin panel (hardcoded to prevent open redirect)
+                window.location.href = '/admin';
             } else {
                 showError(data.error || 'Authentication failed. Please check your credentials.');
             }

@@ -122,8 +122,20 @@ def is_admin() -> bool:
     user = get_current_user()
     if not user:
         return False
-    # Jellyseerr permission bit 2 = admin
-    return bool(user.get("permissions", 0) & 2)
+
+    # Check Seerr permission bit 2 (local admin)
+    if user.get("permissions", 0) & 2:
+        return True
+
+    # Check local Gatekeeparr user record
+    seerr_id = user.get("id")
+    if seerr_id:
+        from gatekeeper.models.user import User
+        local_user = User.query.filter_by(jellyseerr_id=seerr_id).first()
+        if local_user and local_user.is_admin():
+            return True
+
+    return False
 
 
 def require_auth(f):

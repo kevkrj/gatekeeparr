@@ -5,12 +5,14 @@ from gatekeeper.models import db
 from gatekeeper.models.user import User
 from gatekeeper.models.request import Request
 from gatekeeper.services.router import UserRouter
+from gatekeeper.auth import require_auth_api, require_admin
 from sqlalchemy import func
 
 users_bp = Blueprint('users', __name__, url_prefix='/api/users')
 
 
 @users_bp.route('', methods=['GET'])
+@require_auth_api
 def list_users():
     """List all users with their settings."""
     users = User.query.order_by(User.username).all()
@@ -29,6 +31,7 @@ def list_users():
 
 
 @users_bp.route('/<int:user_id>', methods=['GET'])
+@require_auth_api
 def get_user(user_id):
     """Get a single user with their request history."""
     user = User.query.get_or_404(user_id)
@@ -52,6 +55,8 @@ def get_user(user_id):
 
 
 @users_bp.route('/<int:user_id>', methods=['PUT'])
+@require_auth_api
+@require_admin
 def update_user(user_id):
     """Update user settings."""
     user = User.query.get_or_404(user_id)
@@ -94,6 +99,8 @@ def update_user(user_id):
 
 
 @users_bp.route('', methods=['POST'])
+@require_auth_api
+@require_admin
 def create_user():
     """Create a new user manually."""
     data = request.get_json()
@@ -135,6 +142,8 @@ def create_user():
 
 
 @users_bp.route('/sync', methods=['POST'])
+@require_auth_api
+@require_admin
 def sync_users():
     """Sync users from Jellyseerr."""
     try:
@@ -150,6 +159,8 @@ def sync_users():
 
 
 @users_bp.route('/<int:user_id>', methods=['DELETE'])
+@require_auth_api
+@require_admin
 def delete_user(user_id):
     """Delete a user (does not delete their requests)."""
     user = User.query.get_or_404(user_id)

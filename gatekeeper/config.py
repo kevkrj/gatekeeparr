@@ -1,8 +1,11 @@
-"""Configuration management for Gatekeeper"""
+"""Configuration management for Gatekeeparr"""
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Optional
+
+_config_logger = logging.getLogger(__name__)
 
 # Load persistent .env from data volume if it exists (written by setup wizard)
 _PERSISTENT_ENV = os.getenv('GATEKEEPER_ENV_PATH', '/app/data/.env')
@@ -154,6 +157,11 @@ def get_config() -> Config:
     global config
     if config is None:
         config = Config.from_env()
+        if config.secret_key == "change-me-in-production":
+            _config_logger.warning(
+                "SECURITY WARNING: Using default secret key. "
+                "Set GATEKEEPER_SECRET_KEY in your .env file to a random value."
+            )
     return config
 
 
