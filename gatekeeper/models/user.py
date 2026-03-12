@@ -23,7 +23,8 @@ class User(db.Model, TimestampMixin):
 
     # Content filtering
     requires_approval = db.Column(db.Boolean, default=False)
-    max_rating = db.Column(db.String(10))  # 'G', 'PG', 'PG-13', 'R', NULL (no limit)
+    max_rating = db.Column(db.String(10))  # Max auto-approve rating (e.g. 'PG'). NULL = no limit
+    max_approval_rating = db.Column(db.String(10))  # Max hold-for-approval rating (e.g. 'R'). Above this = auto-deny. NULL = no limit
 
     # Quotas (NULL = unlimited)
     quota_daily = db.Column(db.Integer)
@@ -65,11 +66,41 @@ class User(db.Model, TimestampMixin):
         """Check if user has admin privileges"""
         return self.user_type == self.TYPE_ADMIN
 
+    def _rating_value(self, rating: str) -> int:
+        """Get numeric value for a rating string."""
+        return self.RATING_ORDER.get(rating.upper(), 99) if rating else 99
+
+    def should_auto_deny_rating(self, rating: str) -> bool:
+        """
+        Check if this rating should be auto-denied for this user.
+        Returns True if the rating exceeds max_approval_rating.
+        """
+        if self.is_admin():
+            return False
+        if self.is_adult() and not self.requires_approval:
+            return False
+
+        # Determine the approval ceiling
+        if self.max_approval_rating:
+            ceiling = self.max_approval_rating
+        elif not self.max_rating:
+            # No limits set - use defaults
+            if self.is_kid():
+                ceiling = 'PG-13'  # Kids: auto-deny R+
+            elif self.is_teen():
+                ceiling = 'R'      # Teens: auto-deny NC-17+
+            else:
+                return False
+        else:
+            # max_rating set but no max_approval_rating - no auto-deny ceiling
+            return False
+
+        return self._rating_value(rating) > self._rating_value(ceiling)
+
     def needs_approval_for_rating(self, rating: str) -> bool:
         """
         Check if this user needs approval for content with the given rating.
-        Adults never need approval. Kids/teens need approval for content
-        above their max_rating threshold.
+        Returns True if rating is above max_rating but within max_approval_rating.
         """
         if self.is_admin():
             return False
@@ -79,7 +110,6 @@ class User(db.Model, TimestampMixin):
 
         if not self.max_rating:
             # No max rating set, use defaults based on user type
-            # Kids auto-approve up to TV-PG, hold PG-13/TV-14, block R/TV-MA
             if self.is_kid():
                 max_allowed = 'TV-PG'
             elif self.is_teen():
@@ -89,11 +119,7 @@ class User(db.Model, TimestampMixin):
         else:
             max_allowed = self.max_rating
 
-        # Compare ratings
-        rating_value = self.RATING_ORDER.get(rating.upper(), 99)
-        max_value = self.RATING_ORDER.get(max_allowed.upper(), 99)
-
-        return rating_value > max_value
+        return self._rating_value(rating) > self._rating_value(max_allowed)
 
     def get_monthly_request_count(self, media_type: str) -> int:
         """Count approved/auto-approved requests this month for a media type."""
@@ -136,6 +162,7 @@ class User(db.Model, TimestampMixin):
             'user_type': self.user_type,
             'requires_approval': self.requires_approval,
             'max_rating': self.max_rating,
+            'max_approval_rating': self.max_approval_rating,
             'quota_daily': self.quota_daily,
             'quota_monthly': self.quota_monthly,
             'quota_monthly_tv': self.quota_monthly_tv,

@@ -197,11 +197,11 @@ class UserRouter:
                 user=user,
             )
 
-        # Rule 6: Auto-deny R-rated content for kids
-        if user.is_kid() and rating in ('R', 'TV-MA'):
+        # Rule 6: Auto-deny content above the user's approval ceiling
+        if user.should_auto_deny_rating(rating):
             return RoutingResult(
                 decision=RoutingDecision.BLOCK,
-                reason=f"{rating} content auto-denied for kid user",
+                reason=f"{rating} content auto-denied for {user.user_type} user (exceeds approval ceiling)",
                 user=user,
                 requires_notification=True,
             )

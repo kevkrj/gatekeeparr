@@ -403,13 +403,14 @@ async function loadUsers() {
         const tbody = document.querySelector('#users-table tbody');
 
         if (data.users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No users found. Click "Sync from Jellyseerr" to import users.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No users found. Click "Sync from Seerr" to import users.</td></tr>';
         } else {
             tbody.innerHTML = data.users.map(u => `
                 <tr>
                     <td>${escapeHtml(u.username)}</td>
                     <td>${userTypeBadge(u.user_type)}</td>
                     <td>${escapeHtml(u.max_rating || 'No limit')}</td>
+                    <td>${escapeHtml(u.max_approval_rating || 'No limit')}</td>
                     <td>${u.request_count || 0}</td>
                     <td>
                         <button class="btn btn-small" onclick="editUser(${parseInt(u.id)})">Edit</button>
@@ -434,7 +435,9 @@ async function editUser(userId) {
         document.getElementById('edit-username').value = user.username;
         document.getElementById('edit-user-type').value = user.user_type;
         document.getElementById('edit-max-rating').value = user.max_rating || '';
+        document.getElementById('edit-max-approval-rating').value = user.max_approval_rating || '';
         document.getElementById('edit-requires-approval').checked = user.requires_approval;
+        updateAutoDenyLabel();
     } catch (err) {
         console.error('Failed to load user:', err);
         showToast('Failed to load user details', 'error');
@@ -449,6 +452,7 @@ document.getElementById('user-edit-form').addEventListener('submit', async (e) =
     const data = {
         user_type: document.getElementById('edit-user-type').value,
         max_rating: document.getElementById('edit-max-rating').value || null,
+        max_approval_rating: document.getElementById('edit-max-approval-rating').value || null,
         requires_approval: document.getElementById('edit-requires-approval').checked
     };
 
@@ -544,6 +548,33 @@ async function loadCurrentUser() {
         // Silently fail - navbar just won't show user info
     }
 }
+
+// Rating tier helpers
+const ratingOrderList = ['G', 'TV-Y', 'TV-Y7', 'TV-G', 'PG', 'TV-PG', 'PG-13', 'TV-14', 'R', 'TV-MA', 'NC-17'];
+
+function updateAutoDenyLabel() {
+    const approvalRating = document.getElementById('edit-max-approval-rating').value;
+    const denyLabel = document.getElementById('auto-deny-label');
+    const hint = document.getElementById('rating-hint');
+
+    if (!approvalRating) {
+        denyLabel.textContent = 'Nothing';
+        hint.textContent = 'No auto-deny ceiling set. Anything above auto-approve goes to approval.';
+    } else {
+        const idx = ratingOrderList.indexOf(approvalRating);
+        if (idx >= 0 && idx < ratingOrderList.length - 1) {
+            const denied = ratingOrderList.slice(idx + 1).join(', ');
+            denyLabel.textContent = denied;
+            hint.textContent = `Ratings above ${approvalRating} will be automatically denied.`;
+        } else {
+            denyLabel.textContent = 'None';
+            hint.textContent = '';
+        }
+    }
+}
+
+document.getElementById('edit-max-rating').addEventListener('change', updateAutoDenyLabel);
+document.getElementById('edit-max-approval-rating').addEventListener('change', updateAutoDenyLabel);
 
 // Initial load
 loadCurrentUser();

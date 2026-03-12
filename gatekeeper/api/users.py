@@ -62,7 +62,7 @@ def update_user(user_id):
 
     # Allowed fields to update
     allowed_fields = [
-        'user_type', 'requires_approval', 'max_rating',
+        'user_type', 'requires_approval', 'max_rating', 'max_approval_rating',
         'quota_daily', 'quota_weekly', 'quota_monthly', 'quota_monthly_tv',
         'display_name', 'jellyseerr_username'
     ]
@@ -72,10 +72,12 @@ def update_user(user_id):
     if 'user_type' in data and data['user_type'] not in valid_user_types:
         return jsonify({'error': f'Invalid user_type. Must be one of: {valid_user_types}'}), 400
 
-    # Validate max_rating
+    # Validate rating fields
     valid_ratings = ['G', 'PG', 'PG-13', 'R', 'NC-17', 'TV-Y', 'TV-Y7', 'TV-G', 'TV-PG', 'TV-14', 'TV-MA', None]
     if 'max_rating' in data and data['max_rating'] not in valid_ratings:
-        return jsonify({'error': f'Invalid max_rating'}), 400
+        return jsonify({'error': 'Invalid max_rating'}), 400
+    if 'max_approval_rating' in data and data['max_approval_rating'] not in valid_ratings:
+        return jsonify({'error': 'Invalid max_approval_rating'}), 400
 
     # Update fields
     for field in allowed_fields:
@@ -116,6 +118,7 @@ def create_user():
         user_type=data.get('user_type', 'adult'),
         requires_approval=data.get('requires_approval', False),
         max_rating=data.get('max_rating'),
+        max_approval_rating=data.get('max_approval_rating'),
         jellyseerr_id=data.get('jellyseerr_id'),
         jellyseerr_username=data.get('jellyseerr_username'),
         jellyfin_id=data.get('jellyfin_id'),

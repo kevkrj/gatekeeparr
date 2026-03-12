@@ -131,13 +131,14 @@
                         <tr>
                             <th>Username</th>
                             <th>Type</th>
-                            <th>Max Rating</th>
+                            <th>Auto-Approve</th>
+                            <th>Approval Ceiling</th>
                             <th>Requests</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td colspan="5" class="loading">Loading...</td></tr>
+                        <tr><td colspan="6" class="loading">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -206,26 +207,61 @@
                         <option value="admin">Admin</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Max Rating</label>
-                    <select id="edit-max-rating">
-                        <option value="">No Limit</option>
-                        <option value="G">G</option>
-                        <option value="PG">PG</option>
-                        <option value="PG-13">PG-13</option>
-                        <option value="R">R</option>
-                        <option value="TV-Y">TV-Y</option>
-                        <option value="TV-Y7">TV-Y7</option>
-                        <option value="TV-G">TV-G</option>
-                        <option value="TV-PG">TV-PG</option>
-                        <option value="TV-14">TV-14</option>
-                        <option value="TV-MA">TV-MA</option>
-                    </select>
+
+                <div class="form-section-label">Content Rating Tiers</div>
+                <div class="rating-tiers">
+                    <div class="rating-tier tier-approve">
+                        <div class="tier-header">
+                            <span class="tier-icon">&#x2705;</span>
+                            <span>Auto-Approve up to</span>
+                        </div>
+                        <select id="edit-max-rating">
+                            <option value="">No Limit</option>
+                            <option value="G">G</option>
+                            <option value="TV-Y">TV-Y</option>
+                            <option value="TV-Y7">TV-Y7</option>
+                            <option value="TV-G">TV-G</option>
+                            <option value="PG">PG</option>
+                            <option value="TV-PG">TV-PG</option>
+                            <option value="PG-13">PG-13</option>
+                            <option value="TV-14">TV-14</option>
+                            <option value="R">R</option>
+                            <option value="TV-MA">TV-MA</option>
+                        </select>
+                    </div>
+                    <div class="rating-tier tier-hold">
+                        <div class="tier-header">
+                            <span class="tier-icon">&#x1f7e1;</span>
+                            <span>Needs Approval up to</span>
+                        </div>
+                        <select id="edit-max-approval-rating">
+                            <option value="">No Limit</option>
+                            <option value="G">G</option>
+                            <option value="TV-Y">TV-Y</option>
+                            <option value="TV-Y7">TV-Y7</option>
+                            <option value="TV-G">TV-G</option>
+                            <option value="PG">PG</option>
+                            <option value="TV-PG">TV-PG</option>
+                            <option value="PG-13">PG-13</option>
+                            <option value="TV-14">TV-14</option>
+                            <option value="R">R</option>
+                            <option value="TV-MA">TV-MA</option>
+                        </select>
+                    </div>
+                    <div class="rating-tier tier-deny">
+                        <div class="tier-header">
+                            <span class="tier-icon">&#x1f534;</span>
+                            <span>Auto-Deny above</span>
+                        </div>
+                        <div class="tier-computed" id="auto-deny-label">-</div>
+                    </div>
                 </div>
+                <div class="form-hint" id="rating-hint"></div>
+
                 <div class="form-group">
                     <label>
                         <input type="checkbox" id="edit-requires-approval">
-                        Requires Approval (even for adults)
+                        Always Requires Approval (overrides auto-approve for adults)
                     </label>
                 </div>
                 <div class="form-actions">

@@ -464,6 +464,75 @@ h2 {
     color: var(--text-primary);
 }
 
+/* Rating Tiers in Edit User Modal */
+.form-section-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 1.25rem 0 0.75rem;
+}
+
+.rating-tiers {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.rating-tier {
+    flex: 1;
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+}
+
+.rating-tier.tier-approve {
+    border-color: var(--success);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.rating-tier.tier-hold {
+    border-color: var(--warning);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.rating-tier.tier-deny {
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.tier-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.tier-icon {
+    font-size: 0.9rem;
+}
+
+.rating-tier select {
+    width: 100%;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+
+.tier-computed {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--danger);
+    padding: 0.4rem 0;
+}
+
 /* Request Detail */
 .request-detail h2 {
     margin-bottom: 1.5rem;
