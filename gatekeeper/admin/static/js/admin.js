@@ -4,10 +4,17 @@
 
 // API helper
 const api = {
-    async get(url) {
-        const response = await fetch(url);
+    async _handle(response) {
+        if (response.status === 401) {
+            window.location.href = '/login';
+            throw new Error('Session expired');
+        }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
+    },
+    async get(url) {
+        const response = await fetch(url);
+        return this._handle(response);
     },
     async post(url, data = {}) {
         const response = await fetch(url, {
@@ -15,8 +22,7 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
+        return this._handle(response);
     },
     async put(url, data = {}) {
         const response = await fetch(url, {
@@ -24,8 +30,7 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
+        return this._handle(response);
     }
 };
 
@@ -485,5 +490,25 @@ document.getElementById('btn-refresh-users').addEventListener('click', loadUsers
 document.getElementById('filter-action').addEventListener('change', loadApprovals);
 document.getElementById('btn-refresh-approvals').addEventListener('click', loadApprovals);
 
+// Load current user info into navbar
+async function loadCurrentUser() {
+    try {
+        const data = await api.get('/api/auth/me');
+        if (data.authenticated && data.user) {
+            const user = data.user;
+            const nameEl = document.getElementById('nav-username');
+            const name = user.display_name || user.username || user.email;
+            if (user.is_admin) {
+                nameEl.innerHTML = name + ' <span class="nav-user-badge">Admin</span>';
+            } else {
+                nameEl.textContent = name;
+            }
+        }
+    } catch (e) {
+        // Silently fail - navbar just won't show user info
+    }
+}
+
 // Initial load
+loadCurrentUser();
 loadDashboard();

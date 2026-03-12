@@ -178,7 +178,18 @@ class UserRouter:
                 user=user,
             )
 
-        # Rule 4: Adults without approval flag - auto-approve
+        # Rule 4: Check monthly quota (applies to all non-admin users)
+        if not user.is_admin():
+            within_quota, quota_reason = user.check_quota(media_type)
+            if not within_quota:
+                return RoutingResult(
+                    decision=RoutingDecision.BLOCK,
+                    reason=quota_reason,
+                    user=user,
+                    requires_notification=True,
+                )
+
+        # Rule 5: Adults without approval flag - auto-approve
         if user.is_adult() and not user.requires_approval:
             return RoutingResult(
                 decision=RoutingDecision.AUTO_APPROVE,
@@ -186,7 +197,7 @@ class UserRouter:
                 user=user,
             )
 
-        # Rule 5: Auto-deny R-rated content for kids
+        # Rule 6: Auto-deny R-rated content for kids
         if user.is_kid() and rating in ('R', 'TV-MA'):
             return RoutingResult(
                 decision=RoutingDecision.BLOCK,
@@ -195,7 +206,7 @@ class UserRouter:
                 requires_notification=True,
             )
 
-        # Rule 6: Check if rating requires approval for this user
+        # Rule 7: Check if rating requires approval for this user
         if user.needs_approval_for_rating(rating):
             return RoutingResult(
                 decision=RoutingDecision.HOLD_FOR_APPROVAL,
@@ -204,7 +215,7 @@ class UserRouter:
                 requires_notification=True,
             )
 
-        # Rule 7: Rating is within user's allowed range
+        # Rule 8: Rating is within user's allowed range
         return RoutingResult(
             decision=RoutingDecision.AUTO_APPROVE,
             reason=f"{rating} is within allowed ratings for {user.user_type}",

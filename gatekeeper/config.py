@@ -4,6 +4,15 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Load persistent .env from data volume if it exists (written by setup wizard)
+_PERSISTENT_ENV = os.getenv('GATEKEEPER_ENV_PATH', '/app/data/.env')
+if os.path.isfile(_PERSISTENT_ENV):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_PERSISTENT_ENV, override=False)
+    except ImportError:
+        pass
+
 
 @dataclass
 class AIConfig:

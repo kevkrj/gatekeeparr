@@ -7,10 +7,10 @@ services:
       - "5023:5000"
     volumes:
       - ./data:/app/data
-      - /media/movies:/media/movies:ro
-      - /media/tv:/media/tv:ro
-      - /media/kids-approved/movies:/media/kids-approved/movies:rw
-      - /media/kids-approved/tv:/media/kids-approved/tv:rw
+      - /mnt/nas/media/movies:/media/movies:ro
+      - /mnt/nas/media/tv:/media/tv:ro
+      - /mnt/nas/media/kids-approved/movies:/media/kids-approved/movies:rw
+      - /mnt/nas/media/kids-approved/tv:/media/kids-approved/tv:rw
     env_file:
       - .env
     environment:

@@ -63,7 +63,7 @@ def update_user(user_id):
     # Allowed fields to update
     allowed_fields = [
         'user_type', 'requires_approval', 'max_rating',
-        'quota_daily', 'quota_weekly', 'quota_monthly',
+        'quota_daily', 'quota_weekly', 'quota_monthly', 'quota_monthly_tv',
         'display_name', 'jellyseerr_username'
     ]
 

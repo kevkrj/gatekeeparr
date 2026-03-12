@@ -25,10 +25,11 @@ class User(db.Model, TimestampMixin):
     requires_approval = db.Column(db.Boolean, default=False)
     max_rating = db.Column(db.String(10))  # 'G', 'PG', 'PG-13', 'R', NULL (no limit)
 
-    # Quotas
-    quota_daily = db.Column(db.Integer)  # NULL = unlimited
+    # Quotas (NULL = unlimited)
+    quota_daily = db.Column(db.Integer)
     quota_weekly = db.Column(db.Integer)
-    quota_monthly = db.Column(db.Integer)
+    quota_monthly = db.Column(db.Integer)  # Monthly movie request limit
+    quota_monthly_tv = db.Column(db.Integer)  # Monthly TV series request limit
 
     # Relationships
     requests = db.relationship('Request', backref='user', lazy='dynamic')
@@ -94,6 +95,35 @@ class User(db.Model, TimestampMixin):
 
         return rating_value > max_value
 
+    def get_monthly_request_count(self, media_type: str) -> int:
+        """Count approved/auto-approved requests this month for a media type."""
+        from datetime import datetime
+        from gatekeeper.models.request import Request
+        now = datetime.utcnow()
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return self.requests.filter(
+            Request.media_type == media_type,
+            Request.status.in_(('approved', 'auto_approved')),
+            Request.requested_at >= start_of_month,
+        ).count()
+
+    def check_quota(self, media_type: str) -> tuple[bool, str]:
+        """
+        Check if user is within their monthly quota for the given media type.
+
+        Returns:
+            (within_quota, reason) - True if allowed, False if over quota
+        """
+        if media_type == 'movie' and self.quota_monthly is not None:
+            count = self.get_monthly_request_count('movie')
+            if count >= self.quota_monthly:
+                return False, f"Monthly movie quota reached ({count}/{self.quota_monthly})"
+        elif media_type == 'tv' and self.quota_monthly_tv is not None:
+            count = self.get_monthly_request_count('tv')
+            if count >= self.quota_monthly_tv:
+                return False, f"Monthly TV quota reached ({count}/{self.quota_monthly_tv})"
+        return True, ""
+
     def to_dict(self) -> dict:
         """Convert user to dictionary for JSON serialization"""
         return {
@@ -107,6 +137,8 @@ class User(db.Model, TimestampMixin):
             'requires_approval': self.requires_approval,
             'max_rating': self.max_rating,
             'quota_daily': self.quota_daily,
+            'quota_monthly': self.quota_monthly,
+            'quota_monthly_tv': self.quota_monthly_tv,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 

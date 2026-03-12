@@ -75,6 +75,37 @@ body {
     background: rgba(59, 130, 246, 0.1);
 }
 
+/* Nav User */
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.nav-user-name {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.nav-user-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-left: 0.25rem;
+    vertical-align: middle;
+}
+
+.nav-logout {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.8rem;
+}
+
 /* Container */
 .container {
     max-width: 1400px;
@@ -574,6 +605,10 @@ h2 {
     .nav-links {
         flex-wrap: wrap;
         justify-content: center;
+    }
+
+    .nav-user {
+        order: -1;
     }
 
     .container {

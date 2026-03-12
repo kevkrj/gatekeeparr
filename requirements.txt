@@ -19,6 +19,9 @@ anthropic>=0.39.0      # Claude
 openai>=1.0.0          # OpenAI and Grok (OpenAI-compatible API)
 # ollama uses REST API, no package needed
 
+# Environment file loading
+python-dotenv>=1.0.0
+
 # Production server
 gunicorn>=21.0.0
 

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gatekeeper Setup</title>
+    <link rel="stylesheet" href="/static/css/admin.css">
+    <link rel="stylesheet" href="/static/css/setup.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-icon">&#x1f6e1;&#xfe0f;</span>
+            <span class="brand-text">Gatekeeper Setup</span>
+        </div>
+    </nav>
+
+    <main class="container setup-container">
+        <!-- Progress bar -->
+        <div class="setup-progress">
+            <div class="progress-steps">
+                <div class="progress-step active" data-step="1">
+                    <div class="step-circle">1</div>
+                    <div class="step-label">Services</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="2">
+                    <div class="step-circle">2</div>
+                    <div class="step-label">AI Provider</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="3">
+                    <div class="step-circle">3</div>
+                    <div class="step-label">TMDB</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="4">
+                    <div class="step-circle">4</div>
+                    <div class="step-label">Notifications</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="5">
+                    <div class="step-circle">5</div>
+                    <div class="step-label">Admin User</div>
+                </div>
+                <div class="progress-line"></div>
+                <div class="progress-step" data-step="6">
+                    <div class="step-circle">6</div>
+                    <div class="step-label">Finish</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 1: Service Connections -->
+        <div class="setup-step active" id="step-1">
+            <div class="card setup-card">
+                <h2>Service Connections</h2>
+                <p class="setup-description">Connect Gatekeeper to your media management services.</p>
+
+                <div class="service-group">
+                    <h3>Jellyseerr</h3>
+                    <div class="form-group">
+                        <label for="jellyseerr_url">URL</label>
+                        <input type="text" id="jellyseerr_url" placeholder="http://localhost:5055" value="http://localhost:5055">
+                    </div>
+                    <div class="form-group">
+                        <label for="jellyseerr_api_key">API Key</label>
+                        <input type="password" id="jellyseerr_api_key" placeholder="Enter Jellyseerr API key">
+                    </div>
+                    <div class="test-row">
+                        <button class="btn btn-small" onclick="testConnection('jellyseerr')">Test Connection</button>
+                        <span class="test-result" id="test-jellyseerr"></span>
+                    </div>
+                </div>
+
+                <div class="service-group">
+                    <h3>Radarr</h3>
+                    <div class="form-group">
+                        <label for="radarr_url">URL</label>
+                        <input type="text" id="radarr_url" placeholder="http://localhost:7878" value="http://localhost:7878">
+                    </div>
+                    <div class="form-group">
+                        <label for="radarr_api_key">API Key</label>
+                        <input type="password" id="radarr_api_key" placeholder="Enter Radarr API key">
+                    </div>
+                    <div class="test-row">
+                        <button class="btn btn-small" onclick="testConnection('radarr')">Test Connection</button>
+                        <span class="test-result" id="test-radarr"></span>
+                    </div>
+                </div>
+
+                <div class="service-group">
+                    <h3>Sonarr</h3>
+                    <div class="form-group">
+                        <label for="sonarr_url">URL</label>
+                        <input type="text" id="sonarr_url" placeholder="http://localhost:8989" value="http://localhost:8989">
+                    </div>
+                    <div class="form-group">
+                        <label for="sonarr_api_key">API Key</label>
+                        <input type="password" id="sonarr_api_key" placeholder="Enter Sonarr API key">
+                    </div>
+                    <div class="test-row">
+                        <button class="btn btn-small" onclick="testConnection('sonarr')">Test Connection</button>
+                        <span class="test-result" id="test-sonarr"></span>
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <div></div>
+                    <button class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: AI Provider -->
+        <div class="setup-step" id="step-2">
+            <div class="card setup-card">
+                <h2>AI Provider</h2>
+                <p class="setup-description">Gatekeeper uses AI to analyze content ratings and suitability. Choose your provider.</p>
+
+                <div class="form-group">
+                    <label for="ai_provider">Provider</label>
+                    <select id="ai_provider" onchange="onProviderChange()">
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="grok">Grok (xAI)</option>
+                        <option value="ollama">Ollama (Local)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="ai_api_key_group">
+                    <label for="ai_api_key">API Key</label>
+                    <input type="password" id="ai_api_key" placeholder="Enter API key">
+                </div>
+
+                <div class="form-group" id="ai_base_url_group" style="display:none">
+                    <label for="ai_base_url">Base URL</label>
+                    <input type="text" id="ai_base_url" placeholder="http://localhost:11434">
+                </div>
+
+                <div class="form-group">
+                    <label for="ai_model">Model (optional override)</label>
+                    <input type="text" id="ai_model" placeholder="Leave blank for default">
+                    <span class="form-hint" id="model-hint">Default: claude-sonnet-4-20250514</span>
+                </div>
+
+                <div class="test-row">
+                    <button class="btn btn-small" onclick="testConnection('ai')">Test Connection</button>
+                    <span class="test-result" id="test-ai"></span>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn" onclick="prevStep()">Back</button>
+                    <button class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: TMDB -->
+        <div class="setup-step" id="step-3">
+            <div class="card setup-card">
+                <h2>TMDB API Key</h2>
+                <p class="setup-description">The Movie Database (TMDB) provides content ratings and metadata. Get a free API key at <a href="https://www.themoviedb.org/settings/api" target="_blank" class="link">themoviedb.org</a>.</p>
+
+                <div class="form-group">
+                    <label for="tmdb_api_key">API Key (v3 auth)</label>
+                    <input type="password" id="tmdb_api_key" placeholder="Enter TMDB API key">
+                </div>
+
+                <div class="test-row">
+                    <button class="btn btn-small" onclick="testConnection('tmdb')">Test Connection</button>
+                    <span class="test-result" id="test-tmdb"></span>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn" onclick="prevStep()">Back</button>
+                    <button class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Notifications -->
+        <div class="setup-step" id="step-4">
+            <div class="card setup-card">
+                <h2>Notifications</h2>
+                <p class="setup-description">Configure webhook notifications for held requests and approvals. Both are optional.</p>
+
+                <div class="service-group">
+                    <h3>Mattermost</h3>
+                    <div class="form-group">
+                        <label for="mattermost_webhook">Incoming Webhook URL</label>
+                        <input type="text" id="mattermost_webhook" placeholder="https://mattermost.example.com/hooks/xxx">
+                    </div>
+                    <div class="test-row">
+                        <button class="btn btn-small" onclick="testConnection('mattermost')">Test</button>
+                        <span class="test-result" id="test-mattermost"></span>
+                    </div>
+                </div>
+
+                <div class="service-group">
+                    <h3>Discord</h3>
+                    <div class="form-group">
+                        <label for="discord_webhook">Webhook URL</label>
+                        <input type="text" id="discord_webhook" placeholder="https://discord.com/api/webhooks/xxx/yyy">
+                    </div>
+                    <div class="test-row">
+                        <button class="btn btn-small" onclick="testConnection('discord')">Test</button>
+                        <span class="test-result" id="test-discord"></span>
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn" onclick="prevStep()">Back</button>
+                    <button class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5: Admin User -->
+        <div class="setup-step" id="step-5">
+            <div class="card setup-card">
+                <h2>Create Admin User</h2>
+                <p class="setup-description">Create the first admin user. Link it to a Jellyseerr account so requests are recognized.</p>
+
+                <div class="form-group">
+                    <label for="admin_username">Username</label>
+                    <input type="text" id="admin_username" placeholder="admin">
+                </div>
+
+                <div class="form-group">
+                    <label>Link to Jellyseerr User</label>
+                    <button class="btn btn-small" id="btn-load-users" onclick="loadJellyseerrUsers()">Load Jellyseerr Users</button>
+                    <select id="jellyseerr_user_select" style="display:none; margin-top: 0.5rem;">
+                        <option value="">-- Select a Jellyseerr user --</option>
+                    </select>
+                    <span class="form-hint">Links this admin to a Jellyseerr account for request tracking.</span>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn" onclick="prevStep()">Back</button>
+                    <button class="btn btn-primary" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6: Summary & Complete -->
+        <div class="setup-step" id="step-6">
+            <div class="card setup-card">
+                <h2>Review &amp; Complete</h2>
+                <p class="setup-description">Review your configuration before finishing setup.</p>
+
+                <div class="summary-grid" id="summary-content">
+                    <!-- Populated by JS -->
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn" onclick="prevStep()">Back</button>
+                    <button class="btn btn-primary btn-complete" id="btn-complete" onclick="completeSetup()">Complete Setup</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success screen (hidden by default) -->
+        <div class="setup-step" id="step-done" style="display:none">
+            <div class="card setup-card setup-done">
+                <div class="done-icon">&#x2705;</div>
+                <h2>Setup Complete!</h2>
+                <p class="setup-description">Gatekeeper is configured and ready to go.</p>
+                <p class="setup-description note">A container restart is recommended to fully load the new configuration.</p>
+                <a href="/admin" class="btn btn-primary">Go to Admin Panel</a>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/js/setup.js"></script>
+</body>
+</html>
